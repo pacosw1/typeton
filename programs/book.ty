@@ -4,7 +4,7 @@ class Book {
     sequel: Book
 
     func getName() -> String {
-       return "hello"
+       return self.name
     }
 }
 

@@ -79,7 +79,8 @@ class ObjectActions(Publisher):
             self.broadcast(
                 Event(
                     CompilerEvent.STOP_COMPILE,
-                    CompilerError(f'{property_name} not found in Class {class_data.id_}')
+                    CompilerError(
+                        f'{property_name} not found in Class {class_data.id_}')
                 )
             )
 
@@ -87,7 +88,8 @@ class ObjectActions(Publisher):
 
         property_pointer = self.stack_allocator.allocate_address(
             ValueType.POINTER, Layers.TEMPORARY)
-        self.broadcast(Event(FunctionTableEvents.ADD_TEMP, (ValueType.POINTER, property_pointer, property_data.class_id)))
+        self.broadcast(Event(FunctionTableEvents.ADD_TEMP,
+                       (ValueType.POINTER, property_pointer, property_data.class_id)))
 
         if property_data.type_ == ValueType.POINTER:
             if self.count < 2:

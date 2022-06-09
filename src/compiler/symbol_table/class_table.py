@@ -27,11 +27,8 @@ class ClassTable(Publisher):
             self.broadcast(Event(CompilerEvent.STOP_COMPILE, CompilerError(
                 f'Class {id_} already exists')))
 
-        self.classes[id_] = Class(id_)
+        self.classes[id_] = Class(id_, self)
         self.current_class = self.classes[id_]
-
-        self.current_class.add_variable("self")
-        self.current_class.set_type(ValueType.POINTER, self.current_class.id_)
 
     def class_size(self, id_):
         if id_ not in self.classes:
@@ -57,13 +54,13 @@ class ClassTable(Publisher):
 
 
 class Class:
-    def __init__(self, id_):
+    def __init__(self, id_, class_table):
         self.current_variable = None
         self.id_ = id_
         self.size = 0
         self.offset = 0
         self.test = []
-        self.function_table = FunctionTable(True)
+        self.function_table = FunctionTable(class_table, self)
         self.variables: Dict[str, ClassVariable] = {}
 
     def add_variable(self, id_):

@@ -29,9 +29,11 @@ PRIMITIVE_TYPES = {ValueType.INT.value, ValueType.FLOAT.value,
 class FunctionTable(Publisher, Subscriber):
     """ A symbol_table of functions """
 
-    def __init__(self, is_class):
+    def __init__(self,  class_table, current_class=None,):
         super().__init__()
         self.functions = {}
+        self.current_class = current_class
+        self.class_table = class_table
         # keep track of them so we don't add repeat numbers to function size
         self.temporal_hash: Dict[int, Variable] = {}
         self.local_hash: Dict[int, Variable] = {}
@@ -45,7 +47,7 @@ class FunctionTable(Publisher, Subscriber):
         self.parameter_count = 0
 
         # We need this for global variable search
-        if not is_class:
+        if current_class is None:
             self.add("global", 0)
             self.current_function.set_type("Void")
 
@@ -146,6 +148,15 @@ class FunctionTable(Publisher, Subscriber):
         layer = Layers.GLOBAL if self.current_function.id_ == 'global' else Layers.LOCAL
         return self.current_function.allocate_dimensions(layer, memory, constant_table)
 
+    def set_self_param(self, allocator):
+        if self.current_class is None:
+            self.broadcast(Event(CompilerEvent.STOP_COMPILE,
+                                 CompilerError('Cannot set self parameter without a class')))
+
+        self.add_variable('self', True)
+        self._set_variable_type(self.current_class.id_,
+                                Layers.LOCAL, allocator)
+
     def set_type(self, type_, memory: StackAllocator):
         """ Sets type for function, parameter or variable """
         layer = Layers.GLOBAL if self.current_function.id_ == "global" else Layers.LOCAL
@@ -173,11 +184,11 @@ class FunctionTable(Publisher, Subscriber):
         # check if parameter type_ first character is capitalized
         # its a class
         if type_[0].isupper() and type_ not in PRIMITIVE_TYPES:
-            # class_size = self.class_table.class_size(type_)
-            # if class_size is None:
-            #     self.broadcast(
-            #         Event(CompilerEvent.STOP_COMPILE,
-            #               CompilerError(f'Class {type_} not found')))
+            class_size = self.class_table.class_size(type_)
+            if class_size is None:
+                self.broadcast(
+                    Event(CompilerEvent.STOP_COMPILE,
+                          CompilerError(f'Class {type_} not found')))
 
             self.function_data().add_variable_size(ValueType.POINTER, layer)
             self.current_function.set_variable_type(
@@ -260,9 +271,10 @@ class FunctionTable(Publisher, Subscriber):
             return variable_table[id_]
 
         # Okay, maybe its global
-        variable_table = self.functions["global"].variables
-        if variable_table.get(id_) is not None:
-            return variable_table[id_]
+        if self.current_class is None:
+            variable_table = self.functions["global"].variables
+            if variable_table.get(id_) is not None:
+                return variable_table[id_]
 
         # Could not find
         self.broadcast(Event(CompilerEvent.STOP_COMPILE,

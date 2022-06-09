@@ -10,7 +10,7 @@ class SymbolTable:
     def __init__(self):
         self.class_table = ClassTable()
         self.constant_table = ConstantTable()
-        self.global_function_table = FunctionTable(False)
+        self.global_function_table = FunctionTable(self.class_table, None)
         self.current_function_table = self.global_function_table
         self.in_class = False
 

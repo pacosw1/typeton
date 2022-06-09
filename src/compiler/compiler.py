@@ -567,9 +567,6 @@ class Compiler(Publisher, Subscriber):
             self.handle_event(Event(CompilerEvent.STOP_COMPILE, CompilerError(
                 f'Function Call Parameter Mistmatch {param_count} != {signature_len}')))
 
-        if self._symbol_table.in_class:
-            self._code_generator.function_actions.add_self_param()
-
     def p_generate_go_sub(self, p):
         """
         generate_go_sub :
@@ -588,9 +585,9 @@ class Compiler(Publisher, Subscriber):
         self._symbol_table.function_table.generate_are_memory()
         self.p_push_operator('(')
         # if in class at self param
-        if self._symbol_table.in_class:
-            class_object = self._code_generator.object_actions.object_stack[-1]
-            self._code_generator.function_actions.add_self_param(class_object)
+        # if self._symbol_table.in_class:
+        #     class_object = self._code_generator.object_actions.object_stack[-1]
+        #     self._code_generator.function_actions.add_self_param(class_object)
 
     def p_verify_parameter_signature(self, p):
         """
@@ -751,6 +748,9 @@ class Compiler(Publisher, Subscriber):
         """
         self._symbol_table.function_table.add(
             p[-1], self._code_generator.get_next_quad())
+
+        if self._symbol_table.in_class:
+            self._symbol_table.function_table.set_self_param(self._allocator)
 
     def p_validate_return(self, p):
         """
