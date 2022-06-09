@@ -2,6 +2,7 @@ from typing import Dict
 from src.compiler.errors import CompilerError, CompilerEvent
 
 from src.compiler.stack_allocator.types import ValueType
+from src.compiler.symbol_table.function_table.function_table import FunctionTable
 from src.utils.display import make_table, TableOptions
 from src.utils.observer import Event, Publisher
 
@@ -28,6 +29,9 @@ class ClassTable(Publisher):
 
         self.classes[id_] = Class(id_)
         self.current_class = self.classes[id_]
+
+        self.current_class.add_variable("self")
+        self.current_class.set_type(ValueType.POINTER, self.current_class.id_)
 
     def class_size(self, id_):
         if id_ not in self.classes:
@@ -59,6 +63,7 @@ class Class:
         self.size = 0
         self.offset = 0
         self.test = []
+        self.function_table = FunctionTable(True)
         self.variables: Dict[str, ClassVariable] = {}
 
     def add_variable(self, id_):
@@ -78,3 +83,5 @@ class Class:
                          map(lambda fun: [
                              fun[1].id_, fun[1].type_, fun[1].offset], self.variables.items()),
                          TableOptions(20, 20)))
+
+        self.function_table.display()

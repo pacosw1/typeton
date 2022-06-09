@@ -8,7 +8,6 @@ from src.compiler.errors import CompilerError, CompilerEvent
 from src.compiler.stack_allocator.helpers import Layers
 from src.compiler.stack_allocator.index import StackAllocator
 from src.compiler.stack_allocator.types import ValueType
-from src.compiler.symbol_table.class_table import ClassTable
 from src.compiler.symbol_table.function_table.variable_table.variable import Variable
 from src.utils.display import make_table, TableOptions
 from src.utils.observer import Subscriber, Event, Publisher
@@ -30,7 +29,7 @@ PRIMITIVE_TYPES = {ValueType.INT.value, ValueType.FLOAT.value,
 class FunctionTable(Publisher, Subscriber):
     """ A symbol_table of functions """
 
-    def __init__(self, class_table: ClassTable):
+    def __init__(self, is_class):
         super().__init__()
         self.functions = {}
         # keep track of them so we don't add repeat numbers to function size
@@ -39,7 +38,6 @@ class FunctionTable(Publisher, Subscriber):
         self.global_hash: Dict[int, Variable] = {}
 
         self.should_delete_temp = []
-        self.class_table = class_table
         self.function_data_table: Dict[str, FunctionData] = {}
 
         self.current_function: Function = None
@@ -47,8 +45,9 @@ class FunctionTable(Publisher, Subscriber):
         self.parameter_count = 0
 
         # We need this for global variable search
-        self.add("global", 0)
-        self.current_function.set_type("Void")
+        if not is_class:
+            self.add("global", 0)
+            self.current_function.set_type("Void")
 
     @property
     def _type_context(self) -> TypeContext:
@@ -174,11 +173,11 @@ class FunctionTable(Publisher, Subscriber):
         # check if parameter type_ first character is capitalized
         # its a class
         if type_[0].isupper() and type_ not in PRIMITIVE_TYPES:
-            class_size = self.class_table.class_size(type_)
-            if class_size is None:
-                self.broadcast(
-                    Event(CompilerEvent.STOP_COMPILE,
-                          CompilerError(f'Class {type_} not found')))
+            # class_size = self.class_table.class_size(type_)
+            # if class_size is None:
+            #     self.broadcast(
+            #         Event(CompilerEvent.STOP_COMPILE,
+            #               CompilerError(f'Class {type_} not found')))
 
             self.function_data().add_variable_size(ValueType.POINTER, layer)
             self.current_function.set_variable_type(
@@ -229,9 +228,8 @@ class FunctionTable(Publisher, Subscriber):
                              ],
                              self.function_data_table.items()), TableOptions(18, 30)))
 
-        if debug:
-            for id_, func in self.functions.items():
-                func.display_variables(id_)
+        for id_, func in self.functions.items():
+            func.display_variables(id_)
 
     def end_function(self):
         """ Releases Function From Directory and Virtual Memory"""

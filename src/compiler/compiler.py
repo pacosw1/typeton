@@ -93,6 +93,7 @@ class Compiler(Publisher, Subscriber):
         if debug:
             # self._display_tables()
             self._display_quads()
+            self._symbol_table.class_table.display()
             # self._symbol_table.class_table.display()
 
         return self._make_json()
@@ -155,12 +156,14 @@ class Compiler(Publisher, Subscriber):
         add_class :
         """
         self._symbol_table.class_table.add_class(p[-1])
+        self._symbol_table.start_class()
 
     def p_end_class(self, p):
         """
         end_class :
         """
         self._symbol_table.class_table.end_class()
+        self._symbol_table.end_class()
 
     def p_function_return_type(self, p):
         """
@@ -196,7 +199,8 @@ class Compiler(Publisher, Subscriber):
         """
         add_class_variable :
         """
-        valid = self._symbol_table.class_table.current_class.add_variable(p[-1])
+        valid = self._symbol_table.class_table.current_class.add_variable(
+            p[-1])
         if not valid:
             self.handle_event(Event(CompilerEvent.STOP_COMPILE,
                                     CompilerError(f"Class property {p[-1]} redeclared")))
@@ -284,6 +288,7 @@ class Compiler(Publisher, Subscriber):
     def p_class_block3(self, p):
         """
         class_block3 :  class_declaration
+                        | function
         """
 
         # removed function for now
@@ -562,6 +567,9 @@ class Compiler(Publisher, Subscriber):
             self.handle_event(Event(CompilerEvent.STOP_COMPILE, CompilerError(
                 f'Function Call Parameter Mistmatch {param_count} != {signature_len}')))
 
+        if self._symbol_table.in_class:
+            self._code_generator.function_actions.add_self_param()
+
     def p_generate_go_sub(self, p):
         """
         generate_go_sub :
@@ -576,8 +584,13 @@ class Compiler(Publisher, Subscriber):
         """
         gen_are_memory :
         """
+
         self._symbol_table.function_table.generate_are_memory()
         self.p_push_operator('(')
+        # if in class at self param
+        if self._symbol_table.in_class:
+            class_object = self._code_generator.object_actions.object_stack[-1]
+            self._code_generator.function_actions.add_self_param(class_object)
 
     def p_verify_parameter_signature(self, p):
         """
@@ -592,7 +605,8 @@ class Compiler(Publisher, Subscriber):
                 f'Too many parameters for function {func_table.current_function_call_id_}')))
 
         param_type_ = current_func.parameter_signature[func_table.parameter_count]
-        self._code_generator.function_actions.verify_parameter_type(param_type_, func_table.parameter_count)
+        self._code_generator.function_actions.verify_parameter_type(
+            param_type_, func_table.parameter_count)
 
     def p_increment_parameter_count(self, p):
         """
@@ -697,6 +711,7 @@ class Compiler(Publisher, Subscriber):
         """
         object_property : ID push_object_property PERIOD object_property
                         | ID push_object_property
+                        | call
         """
 
     def p_push_object_property(self, p):
@@ -758,11 +773,22 @@ class Compiler(Publisher, Subscriber):
         (self._code_generator.push_constant(
             p[-1], self._symbol_table.constant_table))
 
+    # def p_set_self_param(self, p):
+    #     """
+    #     set_self_param :
+    #     """
+    #     if self._symbol_table.in_class and self._symbol_table.function_table.parameter_count == 0:
+    #         self._symbol_table.function_table.add_variable(
+    #             "self", is_param=True)
+    #         self._symbol_table.function_table.set_type(
+    #             "Pointer", self._allocator)
+
     def p_add_param(self, p):
         """
         add_param :
         """
-        (self._symbol_table.function_table.add_variable(p[-1], is_param=True))
+
+        self._symbol_table.function_table.add_variable(p[-1], is_param=True)
 
     def p_add_variable(self, p):
         """
@@ -781,7 +807,8 @@ class Compiler(Publisher, Subscriber):
         """
         allocate_dimensions :
         """
-        size = self._symbol_table.function_table.allocate_dimensions(self._allocator, self._symbol_table.constant_table)
+        size = self._symbol_table.function_table.allocate_dimensions(
+            self._allocator, self._symbol_table.constant_table)
         var = self._symbol_table.function_table.current_function.current_variable
         var.array_type = var.type_
         self._symbol_table.function_table.set_type("Pointer", self._allocator)
@@ -900,13 +927,15 @@ class Compiler(Publisher, Subscriber):
 
         dimensions = []
         for dim_data in reversed(variable.dim_data_list):
-            size = self._symbol_table.constant_table.get_from_value(dim_data.size)
+            size = self._symbol_table.constant_table.get_from_value(
+                dim_data.size)
             m = self._symbol_table.constant_table.get_from_value(dim_data.m)
 
             if m is None:
                 dimension = Dimension(size_address=size.address)
             else:
-                dimension = Dimension(size_address=size.address, m_address=m.address)
+                dimension = Dimension(
+                    size_address=size.address, m_address=m.address)
 
             dimensions.append(dimension)
 
@@ -922,7 +951,8 @@ class Compiler(Publisher, Subscriber):
         """
         get_array_pointer :
         """
-        self._code_generator.get_array_pointer(self._symbol_table.function_table)
+        self._code_generator.get_array_pointer(
+            self._symbol_table.function_table)
         self.p_push_operator(')')
 
     # -- ERROR -----------------------

@@ -43,15 +43,25 @@ class FunctionActions(Publisher, Subscriber):
         quad = Quad(operation=OperationType.GOSUB, result_address=id_)
         self.quad_list.append(quad)
 
-    def verify_parameter_type(self, type_: ValueType, param_id):
+    def verify_parameter_type(self, type_: ValueType, param_id, in_class=False):
         operand: Operand = self.operand_list.pop()
         if operand.type_ is not type_:
             self.broadcast(
                 Event(
                     CompilerEvent.STOP_COMPILE,
-                    CompilerError(f'"Invalid function call signature: Type should be {type_.value} but its {operand.type_.value} instead')
+                    CompilerError(
+                        f'"Invalid function call signature: Type should be {type_.value} but its {operand.type_.value} instead')
                 )
             )
 
-        quad = Quad(operation=OperationType.PARAM, left_address=operand.address, right_address=param_id)
+        quad = Quad(operation=OperationType.PARAM,
+                    left_address=operand.address, right_address=param_id)
+        self.quad_list.append(quad)
+
+    def add_self_parameter(self, obj):
+        self.operand_list.append(
+            Operand(ValueType.POINTER, obj.address, is_class_param=False))
+
+        quad = Quad(operation=OperationType.PARAM,
+                    left_address=obj.address, right_address=param_id)
         self.quad_list.append(quad)

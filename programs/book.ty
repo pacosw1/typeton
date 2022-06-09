@@ -2,6 +2,10 @@ class Book {
     name: String
     author: String
     sequel: Book
+
+    func getName() -> String {
+       return "hello"
+    }
 }
 
 func main() -> {

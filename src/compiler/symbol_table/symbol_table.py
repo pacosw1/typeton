@@ -9,23 +9,19 @@ from .global_table import GlobalTable
 class SymbolTable:
     def __init__(self):
         self.class_table = ClassTable()
-
-        self.function_table = FunctionTable(self.class_table)
         self.constant_table = ConstantTable()
-    #     self.function_table: FunctionTable = None
-    #     self.variable_table: VariableTable = None
-    #
-    #     self.constant_table = ConstantTable()
-    #     self.global_table = FunctionTable()
-    #     self.class_table = ClassTable()
-    #
-    #     # init global
-    #     self.function_table = self.global_table.functions
-    #
-    # def add_class(self):
-    #     current = self.class_table.current_class
-    #     self.variable_table = current.variables
-    #     self.function_table = current.functions
-    #
-    # def end_class(self):
-    #     self.function_table = self.global_table.functions
+        self.global_function_table = FunctionTable(False)
+        self.current_function_table = self.global_function_table
+        self.in_class = False
+
+    @property
+    def function_table(self):
+        return self.current_function_table
+
+    def start_class(self):
+        self.current_function_table = self.class_table.current_class.function_table
+        self.in_class = True
+
+    def end_class(self):
+        self.current_function_table = self.global_function_table
+        self.in_class = False
