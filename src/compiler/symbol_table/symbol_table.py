@@ -1,5 +1,6 @@
+from src.compiler.errors import CompilerEvent
 from src.compiler.symbol_table.function_table import FunctionTable
-from src.utils.observer import Publisher
+from src.utils.observer import Event, Publisher
 from .class_table import ClassTable
 from .constant_table import ConstantTable
 from .function_table.variable_table import VariableTable
@@ -19,8 +20,15 @@ class SymbolTable:
         return self.current_function_table
 
     def start_class(self):
+        if self.current_function_table.current_function.id_ == "global":
+            self.current_function_table.broadcast(
+                Event(CompilerEvent.END_GLOBAL, None))
+
         self.current_function_table = self.class_table.current_class.function_table
         self.in_class = True
+
+    def get_class_functions(self, id_):
+        return self.class_table.get_class_functions(id_)
 
     def end_class(self):
         self.current_function_table = self.global_function_table

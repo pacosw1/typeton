@@ -162,7 +162,6 @@ class Compiler(Publisher, Subscriber):
         """
         end_class :
         """
-        self._symbol_table.class_table.end_class()
         self._symbol_table.end_class()
 
     def p_function_return_type(self, p):

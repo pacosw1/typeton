@@ -29,7 +29,7 @@ PRIMITIVE_TYPES = {ValueType.INT.value, ValueType.FLOAT.value,
 class FunctionTable(Publisher, Subscriber):
     """ A symbol_table of functions """
 
-    def __init__(self,  class_table, current_class=None,):
+    def __init__(self,  class_table, current_class=None):
         super().__init__()
         self.functions = {}
         self.current_class = current_class

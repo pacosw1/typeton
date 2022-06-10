@@ -31,7 +31,7 @@ func main() -> {
     print(book.sequel.name)
 
 
-    delete book3
+    // delete book3
 
-    delete book2
+    // delete book2
 }
