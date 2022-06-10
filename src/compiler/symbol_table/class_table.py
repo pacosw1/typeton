@@ -66,6 +66,8 @@ class ClassTable(Publisher):
         self.class_data[self.current_class.id_] = ClassData(
             self.current_class.id_, self.current_class.size, self.current_class.function_table.function_data())
 
+        del self.current_class
+
 
 class Class:
     def __init__(self, id_, class_table):

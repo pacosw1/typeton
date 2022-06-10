@@ -59,7 +59,11 @@ class ObjectActions(Publisher):
         self.object_stack.append(variable)
 
     def resolve(self):
+        if self.parse_type == 2:
+            return
+
         variable = self.object_stack.pop()
+
         self.operand_list.append(
             Operand(ValueType.POINTER, variable.address_, class_id=variable.class_id, is_class_param=True))
 
@@ -67,6 +71,8 @@ class ObjectActions(Publisher):
         self.pointer_types[variable.address_] = variable.type_
         if variable.class_id is not None:
             self.pointer_types[variable.address_] = variable.class_id
+
+        self.parse_type = 0
 
     def resolve_object_assignment(self):
         self.count += 1
@@ -90,6 +96,7 @@ class ObjectActions(Publisher):
             ValueType.POINTER, Layers.TEMPORARY)
         self.broadcast(Event(FunctionTableEvents.ADD_TEMP,
                        (ValueType.POINTER, property_pointer, property_data.class_id)))
+        print('adding temp', property_pointer)
 
         if property_data.type_ == ValueType.POINTER:
             if self.count < 2:

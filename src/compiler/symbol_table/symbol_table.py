@@ -1,3 +1,4 @@
+from inspect import isclass
 from src.compiler.errors import CompilerEvent
 from src.compiler.symbol_table.function_table import FunctionTable
 from src.compiler.symbol_table.function_table.function import Function
@@ -15,6 +16,7 @@ class SymbolTable:
         self.global_function_table = FunctionTable(self.class_table, None)
         self.current_function_table = self.global_function_table
         self.in_class = False
+        self.function_table_stack = []
 
     @property
     def function_table(self):
@@ -22,10 +24,7 @@ class SymbolTable:
 
     def start_class(self):
         print('start class')
-        if self.current_function_table.current_function.id_ == "global":
-            self.current_function_table.broadcast(
-                Event(CompilerEvent.END_GLOBAL, None))
-
+        self.current_function_table.end_global()
         self.current_function_table = self.class_table.current_class.function_table
         self.in_class = True
 
@@ -38,4 +37,9 @@ class SymbolTable:
 
         self.current_function_table = self.global_function_table
         self.class_table.end_class()
+        self.in_class = False
+
+    def go_back(self):
+        print('go back')
+        self.current_function_table = self.global_function_table
         self.in_class = False

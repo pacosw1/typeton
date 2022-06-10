@@ -200,7 +200,8 @@ class VirtualMachine(Subscriber):
 
     def _execute_typed_divide(self, result_type, left_value, right_value):
         if right_value == 0 or left_value == 0:
-            self.handle_event(Event(RuntimeActions.STOP_RUNTIME, 'Division by zero'))
+            self.handle_event(
+                Event(RuntimeActions.STOP_RUNTIME, 'Division by zero'))
 
         if result_type is ValueType.INT:
             return int(int(left_value) / int(right_value))
@@ -224,7 +225,8 @@ class VirtualMachine(Subscriber):
             # print("left:", p_left, "right:", p_right)
 
             if p_left is None or p_right is None:
-                self.handle_event(Event(RuntimeActions.STOP_RUNTIME, 'NULL pointer exception'))
+                self.handle_event(
+                    Event(RuntimeActions.STOP_RUNTIME, 'NULL pointer exception'))
 
             result = _execute_typed_add(ValueType.INT, p_left, p_right)
             self.__execute_assign(quad.result_address, result)
@@ -238,7 +240,8 @@ class VirtualMachine(Subscriber):
         result = 0
 
         if left is None or right is None:
-            self.handle_event(Event(RuntimeActions.STOP_RUNTIME, 'Cannot perform operation on uninitialised values'))
+            self.handle_event(Event(RuntimeActions.STOP_RUNTIME,
+                              'Cannot perform operation on uninitialised values'))
         if quad.operation is OperationType.ADD:
             result = _execute_typed_add(type_, left, right)
         if quad.operation is OperationType.SUBTRACT:
@@ -257,9 +260,11 @@ class VirtualMachine(Subscriber):
 
         if quad.operation == OperationType.VERIFY:
             if not(0 <= left < result):
-                self.handle_event(Event(RuntimeActions.STOP_RUNTIME, 'Array Index out of range'))
+                self.handle_event(
+                    Event(RuntimeActions.STOP_RUNTIME, 'Array Index out of range'))
         elif quad.operation is OperationType.ARRAY_ADD:
-            value = _execute_typed_add(ValueType.INT, quad.left_address, self._get_value(quad.right_address))
+            value = _execute_typed_add(
+                ValueType.INT, quad.left_address, self._get_value(quad.right_address))
             action, addr = pure_address(quad.result_address)
             self.context_memory[-1].save_reference(addr, value)
 
@@ -299,7 +304,8 @@ class VirtualMachine(Subscriber):
 
             if type_ is ValueType.INT or type_ is ValueType.FLOAT:
                 if not result.isnumeric():
-                    self.handle_event(Event(RuntimeActions.STOP_RUNTIME, 'Invalid input'))
+                    self.handle_event(
+                        Event(RuntimeActions.STOP_RUNTIME, 'Invalid input'))
 
                 if type_ == ValueType.INT:
                     result = int(result)
@@ -332,7 +338,7 @@ class VirtualMachine(Subscriber):
         elif quad.operation is OperationType.ENDFUNC:
             if len(self.context_jump_locations) == 0:
                 self._delete_context_memory()
-                self._ip += 1
+                self._ip = len(self._quads) + 1
                 print("Main function ended")
                 return
 
@@ -367,7 +373,8 @@ class VirtualMachine(Subscriber):
                 if action_left is PointerAction.REFERENCE:
                     # check that pointer to be assigned is actually initialized
                     if self._get_value(f'*{p_left}') is None:
-                        self.handle_event(Event(RuntimeActions.STOP_RUNTIME, 'Cannot assign to uninitialised value'))
+                        self.handle_event(
+                            Event(RuntimeActions.STOP_RUNTIME, 'Cannot assign to uninitialised value'))
                     p_left = self._get_value(quad.left_address)
 
         action_res, _ = pure_address(quad.result_address)

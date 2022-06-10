@@ -58,10 +58,10 @@ class FunctionActions(Publisher, Subscriber):
                     left_address=operand.address, right_address=param_id)
         self.quad_list.append(quad)
 
-    def add_self_parameter(self, obj):
-        self.operand_list.append(
-            Operand(ValueType.POINTER, obj.address, is_class_param=False))
+    def add_self_param(self, obj):
+        # self.operand_list.append(
+        #     Operand(ValueType.POINTER, obj.address_, is_class_param=False))
 
         quad = Quad(operation=OperationType.PARAM,
-                    left_address=obj.address, right_address=param_id)
+                    left_address=obj.address_, right_address=0)
         self.quad_list.append(quad)

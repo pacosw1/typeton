@@ -34,6 +34,7 @@ class FunctionTable(Publisher, Subscriber):
         self.functions = {}
         self.receiveing_off = False
         self.current_class = current_class
+        self.global_ended = False
         self.class_table = class_table
         # keep track of them so we don't add repeat numbers to function size
         self.temporal_hash: Dict[int, Variable] = {}
@@ -70,21 +71,16 @@ class FunctionTable(Publisher, Subscriber):
         from src.compiler.code_generator.expression import ExpressionActions
         from src.compiler.code_generator.array import ArrayEvents
 
-        if self.receiveing_off is True:
-            # print(
-            #     f'Received off for event {event} in class {self.current_class}')
+        if self.current_function is None:
+            print(
+                f'Received event {event.payload} in class {self.current_class}')
             return
 
         if event.type_ is FunctionTableEvents.ADD_TEMP or event.type_ is ArrayEvents.ADD_TEMP:
-            if self.current_function is None:
-                print(self.current_class.id_)
-                return
+            print(
+                f'Received event {event.payload} in class {self.current_class}')
             type_, address, class_id = event.payload
             self.__handle_add_temporal(type_, address, class_id)
-            # print(f'Added temporal {address}')
-        elif event.type_ is CompilerEvent.RELEASE_FUNCTION:
-            print(f'Releasing function {self.current_function.id_}')
-            self.end_function()
 
     def __handle_add_temporal(self, type_, address, class_id=None):
         if address in self.temporal_hash:
@@ -114,15 +110,17 @@ class FunctionTable(Publisher, Subscriber):
         self.broadcast(Event(CompilerEvent.STOP_COMPILE,
                        CompilerError(f'Variable with address {address} not found')))
 
+    def end_global(self):
+        if self.current_function is not None and self.current_function.id_ == 'global':
+            self.global_ended = True
+            self.broadcast(Event(CompilerEvent.END_GLOBAL, None))
+            self.current_function = None
+
     def add(self, id_, quad_start: int):
         """ Add Func to `funcs` dictionary if not existent """
-        prev = self.current_function
-        if prev is not None and prev.id_ == 'global':
-            self.broadcast(Event(CompilerEvent.END_GLOBAL, None))
-            quad_start += 1
 
         if self.functions.get(id_) is None:
-            # print(f'Adding function {id_}')
+            print(f'Adding function {id_}')
             reference = Function(id_=id_)
             self.functions[id_] = reference
             self.current_function = reference
@@ -145,10 +143,9 @@ class FunctionTable(Publisher, Subscriber):
         self.current_function_call_id_ = id_
 
     def generate_are_memory(self):
-        self.broadcast(Event(CompilerEvent.GENERATE_ARE,
-                       self.current_function_call_id_))
         # start counting param signature
         self.parameter_count = 0
+        return self.current_function_call_id_
 
     def add_variable(self, id_, is_param):
         # print(f'Adding variable {id_}')
@@ -215,7 +212,9 @@ class FunctionTable(Publisher, Subscriber):
                     Event(CompilerEvent.STOP_COMPILE,
                           CompilerError(f'Class {type_} not found')))
 
-                print(f'Setting variable type {type_}')
+                print(f'Setting variable  class type {type_}')
+
+            print(f'Setting variable type {type_}')
 
             self.function_data().add_variable_size(ValueType.POINTER, layer)
             self.current_function.set_variable_type(
@@ -275,25 +274,16 @@ class FunctionTable(Publisher, Subscriber):
     def end_function(self):
         """ Releases Function From Directory and Virtual Memory"""
         self.__validate_return()
-        self.receiveing_off = True
+        print('ending', self.current_function.id_)
 
-        # tell quad generator to generate end_func quad
         self.broadcast(Event(CompilerEvent.GEN_END_FUNC, None))
-
-        delete_list = []
-
-        for key in self.current_function.variables:
-            delete_list.append(self.current_function.variables[key].address_)
-
-        for key in self.temporal_hash:
-            var = self.temporal_hash[key]
-            delete_list.append(var.address_)
 
         self.broadcast(Event(CompilerEvent.FREE_MEMORY, None))
         self.temporal_hash = {}
 
     def current_trace(self):
-        return self.current_function.id_
+        if self.current_function:
+            return self.current_function.id_
 
     def get_variable(self, id_):
         # Try to find local first

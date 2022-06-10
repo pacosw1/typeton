@@ -4,7 +4,8 @@ import sys
 import jsonpickle
 
 from src.compiler.code_generator.code_generator import CodeGenerator
-from src.compiler.code_generator.type import Dimension, Operand, OperationType, Quad
+from src.compiler.code_generator.expression import PRIMITIVES
+from src.compiler.code_generator.type import Dimension, FunctionTableEvents, Operand, OperationType, Quad
 from src.compiler.errors import CompilerError, CompilerEvent
 from src.compiler.lexer import lex, tokens
 from src.compiler.ply import yacc
@@ -61,26 +62,47 @@ class Compiler(Publisher, Subscriber):
         if event.type_ is CompilerEvent.STOP_COMPILE:
             self.p_error(event.payload)
 
-    def init_current_function_table(self):
-
+    def remove_temp_function_subs(self):
         object_actions = self._code_generator.object_actions
-        object_actions.add_subscriber(
-            self._symbol_table.function_table, {})
+        object_actions.remove_temp_subscribers()
 
         # subscribe to expression code generator
         expressions = self._code_generator.expression_actions
-        expressions.add_subscriber(
-            self._symbol_table.function_table, {})
+        expressions.remove_temp_subscribers()
 
         # subscribe to array actions
         array_actions = self._code_generator.array_actions
-        array_actions.add_subscriber(
-            self._symbol_table.function_table, {})
+        array_actions.remove_temp_subscribers()
 
         # subscribe to builtin actions
         built_in_actions = self._code_generator.builtin_actions
-        built_in_actions.add_subscriber(
-            self._symbol_table.function_table, {})
+        built_in_actions.remove_temp_subscribers()
+
+        self.remove_temp_subscribers()
+        self._allocator.remove_temp_subscribers()
+        self._symbol_table.function_table.delete_subscribers()
+
+    def init_current_function_table(self):
+        self.remove_temp_function_subs()
+
+        object_actions = self._code_generator.object_actions
+        object_actions.add_temp_subscriber(
+            self._symbol_table.function_table)
+
+        # subscribe to expression code generator
+        expressions = self._code_generator.expression_actions
+        expressions.add_temp_subscriber(
+            self._symbol_table.function_table)
+
+        # subscribe to array actions
+        array_actions = self._code_generator.array_actions
+        array_actions.add_temp_subscriber(
+            self._symbol_table.function_table)
+
+        # subscribe to builtin actions
+        built_in_actions = self._code_generator.builtin_actions
+        built_in_actions.add_temp_subscriber(
+            self._symbol_table.function_table)
 
         self._symbol_table.function_table.add_subscribers(
             [
@@ -90,10 +112,10 @@ class Compiler(Publisher, Subscriber):
                 self
             ])
 
-        self.add_subscriber(self._symbol_table.function_table, {})
+        self.add_temp_subscriber(self._symbol_table.function_table)
 
-        self._allocator.add_subscriber(
-            self._symbol_table.function_table, {})
+        self._allocator.add_temp_subscriber(
+            self._symbol_table.function_table)
 
     def compile(self, data: str, debug=False):
         """
@@ -111,10 +133,9 @@ class Compiler(Publisher, Subscriber):
                               CompilerError("Main function is required")))
 
         if debug:
-            # self._display_tables()
+            self._display_tables()
             self._display_quads()
             self._symbol_table.class_table.display()
-            # self._symbol_table.class_table.display()
 
         return self._make_json()
 
@@ -177,14 +198,15 @@ class Compiler(Publisher, Subscriber):
         """
         self._symbol_table.class_table.add_class(p[-1])
         self._symbol_table.start_class()
-
         self.init_current_function_table()
 
     def p_end_class(self, p):
         """
         end_class :
         """
+        self.remove_temp_function_subs()
         self._symbol_table.end_class()
+        self.init_current_function_table()
 
     def p_function_return_type(self, p):
         """
@@ -261,7 +283,7 @@ class Compiler(Publisher, Subscriber):
 
     def p_param(self, p):
         """
-        param : ID add_param COLON primitive
+        param : ID add_param COLON primitive  
         """
 
     # -- TYPE -----------------------
@@ -577,7 +599,20 @@ class Compiler(Publisher, Subscriber):
         """
         verify_function_existence :
         """
+
+        # check if function called by object
+        # if len(self._code_generator.object_actions.object_stack) > 0:
+        #     # dont pop as we need pointer to create invisible self parameter
+        #     obj = self._code_generator.object_actions.object_stack[-1]
+        #     if obj.type_ in PRIMITIVES:
+        #         self.handle_event(Event(CompilerEvent.STOP_COMPILE, CompilerError(
+        #             f'Cannot call function {p[-1]} on primitive value{obj.id_}')))
+        #     # change function context to class
+        #     self._symbol_table.change_class_functions(obj.class_id)
+
         self._symbol_table.function_table.verify_function_exists(p[-1])
+        # self._symbol_table.go_back()
+        # set context back to global
 
     def p_verify_param_count(self, p):
         """
@@ -607,12 +642,18 @@ class Compiler(Publisher, Subscriber):
         gen_are_memory :
         """
 
-        self._symbol_table.function_table.generate_are_memory()
+        func_id = self._symbol_table.function_table.generate_are_memory()
         self.p_push_operator('(')
         # if in class at self param
-        # if self._symbol_table.in_class:
-        #     class_object = self._code_generator.object_actions.object_stack[-1]
-        #     self._code_generator.function_actions.add_self_param(class_object)
+
+        self._code_generator.function_actions.generate_are(func_id)
+
+        # Generate invisible self parameter if class function call
+        if self._symbol_table.in_class:
+            # pop self
+            class_object = self._code_generator.object_actions.object_stack.pop()
+            self._code_generator.function_actions.add_self_param(class_object)
+            self._symbol_table.function_table.parameter_count += 1
 
     def p_verify_parameter_signature(self, p):
         """
@@ -721,8 +762,15 @@ class Compiler(Publisher, Subscriber):
         type_ = self._symbol_table.function_table.functions[id_].type_
         address = self._allocator.allocate_address(type_, Layers.TEMPORARY)
 
+        self.broadcast(
+            Event(FunctionTableEvents.ADD_TEMP, (type_, address, None)))
+
         self._code_generator.expression_actions.add_call_assign(address, type_)
         self.p_push_operator(')')
+
+        # change back to global context
+        # self._symbol_table.go_back()
+        # self.remove_temp_function_subs()
 
     def p_constant2(self, p):
         """
@@ -733,8 +781,15 @@ class Compiler(Publisher, Subscriber):
         """
         object_property : ID push_object_property PERIOD object_property
                         | ID push_object_property
-                        | call
+
         """
+
+    def p_set_resolve_type(self, p):
+        """
+        set_resolve_type :
+        """
+
+        self._code_generator.object_actions.set_parse_type(2)
 
     def p_push_object_property(self, p):
         """
@@ -771,6 +826,9 @@ class Compiler(Publisher, Subscriber):
         """
         add_function :
         """
+        # End global if possible
+        self._symbol_table.function_table.end_global()
+
         self._symbol_table.function_table.add(
             p[-1], self._code_generator.get_next_quad())
 

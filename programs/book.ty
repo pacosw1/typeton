@@ -2,23 +2,27 @@ class Book {
     name: String
     author: String
     sequel: Book
-
-    func getName() -> Int {
-        return 0
-    }
 }
+
+// func test(x: Int) -> {
+//     print(x)
+// }
+
+// func test2(x: Int) -> Int {
+//     print(x)
+//     return x * 2
+// }
 
 func main() -> {
 
     var book: Book
-    var book3: Book
 
     book = new Book()
-    book.name = "Harry Potter"
     book.author = "J.K. Rowling"
+    print(book.author)
 
-    book.getName()
 
+    // i = book.getName()
 
 
     // delete book3
