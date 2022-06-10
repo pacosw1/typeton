@@ -1,4 +1,6 @@
 from typing import Dict
+
+import jsonpickle
 from src.compiler.errors import CompilerError, CompilerEvent
 
 from src.compiler.stack_allocator.types import ValueType
@@ -58,13 +60,20 @@ class ClassTable(Publisher):
             val = self.classes[key]
             val.display()
 
+    def get_output_class_data(self):
+        """ Returns function_data dictionary used in output file """
+        data = {}
+        for id_, class_data in self.class_data.items():
+            data[id_] = jsonpickle.encode(class_data)
+        return data
+
     def end_class(self):
         self.current_class.size = len(self.current_class.variables)
-
         self.current_class.function_table.receiveing_off = True
+        function_data = self.current_class.function_table.get_output_function_data()
 
         self.class_data[self.current_class.id_] = ClassData(
-            self.current_class.id_, self.current_class.size, self.current_class.function_table.function_data())
+            self.current_class.id_, self.current_class.size, function_data)
 
         del self.current_class
 

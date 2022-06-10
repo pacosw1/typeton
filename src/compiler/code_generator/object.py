@@ -1,7 +1,7 @@
 from typing import List
 from unittest import result
 from weakref import ref
-from src.compiler.code_generator.expression import ExpressionActions
+from src.compiler.code_generator.expression import PRIMITIVES, ExpressionActions
 from src.compiler.code_generator.type import FunctionTableEvents, Operand, OperationType, Quad
 from src.compiler.errors import CompilerError, CompilerEvent
 
@@ -24,6 +24,7 @@ class ObjectActions(Publisher):
         self.pointer_types = pointer_types
         self.parse_type = 0
         self.property_parent = None
+        self.next_function_object = []
         self.variable_stack: List[Variable] = []
         self.class_stack = []
         self.object_property_stack = []
@@ -53,33 +54,55 @@ class ObjectActions(Publisher):
 
     def push_object_property(self, property_name):
         self.object_property_stack.append(property_name)
-        self.resolve_object_assignment()
 
     def push_object(self, variable):
         self.object_stack.append(variable)
 
+    def resolve_function_object(self):
+        self.resolve_objects(True)
+        if len(self.object_stack) == 0:
+            # no object to resolve (global function)
+            return
+        self.next_function_object.append(self.object_stack.pop())
+
     def resolve(self):
-        if self.parse_type == 2:
+        """resolve objects for assignment or expressions, always returns pointer with location of object param or object itself"""
+        if len(self.object_stack) == 0:
             return
 
+        self.resolve_objects(is_function_call=False)
         variable = self.object_stack.pop()
 
         self.operand_list.append(
             Operand(ValueType.POINTER, variable.address_, class_id=variable.class_id, is_class_param=True))
 
-        self.count = 0
         self.pointer_types[variable.address_] = variable.type_
         if variable.class_id is not None:
             self.pointer_types[variable.address_] = variable.class_id
 
         self.parse_type = 0
 
-    def resolve_object_assignment(self):
-        self.count += 1
-        variable = self.object_stack.pop()
-        class_data = self.classes[variable.class_id]
+    def resolve_objects(self, is_function_call):
+        count = 0
+        # property_count = len(self.object_property_stack)
 
-        property_name = self.object_property_stack.pop()
+        while (len(self.object_property_stack) > 0):
+            self.resolve_object_assignment(count, is_function_call)
+            count += 1
+
+    def build_quad(self, left, left_pointer_type, result, result_pointer_type, property_data):
+        # either * or &
+        left = f'{left_pointer_type}{left}'
+        result = f'{result_pointer_type}{result}'
+
+        quad = Quad(OperationType.POINTER_ADD, left_address=left, right_address=property_data.offset, result_address=result)
+        quad.property_data = property_data
+
+        return quad
+
+    def validate_property_exists_in_object(self, class_data):
+        """check that property exists in object"""
+        property_name = self.object_property_stack.pop(0)
 
         if property_name not in class_data.variables:
             self.broadcast(
@@ -90,45 +113,45 @@ class ObjectActions(Publisher):
                 )
             )
 
-        property_data = class_data.variables[property_name]
+        return property_name
 
+    def allocate_temporary_result_pointer(self, property_data):
+        """Reserve a temp pointer to local memory """
         property_pointer = self.stack_allocator.allocate_address(
             ValueType.POINTER, Layers.TEMPORARY)
         self.broadcast(Event(FunctionTableEvents.ADD_TEMP,
                        (ValueType.POINTER, property_pointer, property_data.class_id)))
-        print('adding temp', property_pointer)
 
-        if property_data.type_ == ValueType.POINTER:
-            if self.count < 2:
-                quad = Quad(
-                    OperationType.POINTER_ADD,
-                    left_address=f'&{variable.address_}',
-                    right_address=property_data.offset,
-                    result_address=f'&{property_pointer}'
-                )
-            else:
-                quad = Quad(
-                    OperationType.POINTER_ADD,
-                    left_address=f'*{variable.address_}',
-                    right_address=property_data.offset,
-                    result_address=f'&{property_pointer}'
-                )
+        return property_pointer
+
+    def resolve_object_assignment(self, count, is_function_call):
+        variable = self.object_stack.pop(0)
+        class_data = self.classes[variable.class_id]
+
+        property_id = self.validate_property_exists_in_object(class_data)
+        property_data = class_data.variables[property_id]
+
+        property_pointer = self.allocate_temporary_result_pointer(property_data)
+
+        if is_function_call:
+            if property_data.type_ in PRIMITIVES:
+                self.broadcast(Event(CompilerEvent.STOP_COMPILE, CompilerError(
+                    f'{property_id} is not a class type')))
+            # always pass reference for function calls
+            quad = self.build_quad(variable.address_, '&', property_pointer, '&', property_data)
+        elif count == 0:
+            quad = self.build_quad(variable.address_, '&', property_pointer, '&', property_data)
         else:
-            if self.count < 2:
-                quad = Quad(
-                    OperationType.POINTER_ADD,
-                    left_address=f'&{variable.address_}',
-                    right_address=property_data.offset,
-                    result_address=f'&{property_pointer}'
-                )
-            else:
-                quad = Quad(
-                    OperationType.POINTER_ADD,
-                    left_address=f'*{variable.address_}',
-                    right_address=property_data.offset,
-                    result_address=f'&{property_pointer}'
-                )
+            quad = Quad(
+                OperationType.POINTER_ADD,
+                left_address=f'&{variable.address_}',
+                right_address=property_data.offset,
+                result_address=f'&{property_pointer}'
+            )
 
+        self.push_next_object(property_data, property_pointer, quad)
+
+    def push_next_object(self, property_data, property_pointer, quad):
         self.quad_list.append(quad)
 
         var = Variable(None)
@@ -138,9 +161,18 @@ class ObjectActions(Publisher):
 
         self.push_object(var)
 
+        # add to pointer hash for type validation
         self.pointer_types[property_pointer] = property_data.type_
         if property_data.class_id is not None:
             self.pointer_types[property_pointer] = property_data.class_id
+
+    def allocate_temporary_result_pointer(self, property_data):
+        property_pointer = self.stack_allocator.allocate_address(
+            ValueType.POINTER, Layers.TEMPORARY)
+        self.broadcast(Event(FunctionTableEvents.ADD_TEMP,
+                       (ValueType.POINTER, property_pointer, property_data.class_id)))
+
+        return property_pointer
 
     def allocate_heap(self):
         object: Class = self.class_stack.pop()

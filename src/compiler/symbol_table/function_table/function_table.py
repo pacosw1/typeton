@@ -1,4 +1,3 @@
-from audioop import add
 from enum import Enum
 from typing import Dict
 
@@ -31,7 +30,7 @@ class FunctionTable(Publisher, Subscriber):
 
     def __init__(self,  class_table, current_class=None):
         super().__init__()
-        self.functions = {}
+        self.functions: Dict[str, Function] = {}
         self.receiveing_off = False
         self.current_class = current_class
         self.global_ended = False
@@ -40,6 +39,8 @@ class FunctionTable(Publisher, Subscriber):
         self.temporal_hash: Dict[int, Variable] = {}
         self.local_hash: Dict[int, Variable] = {}
         self.global_hash: Dict[int, Variable] = {}
+
+        self.current_function_call_id_ = []
 
         self.should_delete_temp = []
         self.function_data_table: Dict[str, FunctionData] = {}
@@ -135,17 +136,16 @@ class FunctionTable(Publisher, Subscriber):
         self.broadcast(Event(CompilerEvent.STOP_COMPILE, error))
 
     def verify_function_exists(self, id_):
-        # print(f'Verifying function {id_} exists')
         if self.functions.get(id_) is None:
             self.broadcast(Event(
                 CompilerEvent.STOP_COMPILE,
-                CompilerError(f'Invalid Function Call: Function with name {id_} does not exist')))
-        self.current_function_call_id_ = id_
+                CompilerError(f'Invalid Function Call: Function with name {id_} does not exist inside {self.current_class.id_ if self.current_class is not None else "global"}')))
+        self.current_function_call_id_.append(id_)
 
     def generate_are_memory(self):
         # start counting param signature
         self.parameter_count = 0
-        return self.current_function_call_id_
+        return self.current_function_call_id_[-1]
 
     def add_variable(self, id_, is_param):
         # print(f'Adding variable {id_}')
@@ -283,7 +283,7 @@ class FunctionTable(Publisher, Subscriber):
 
     def current_trace(self):
         if self.current_function:
-            return self.current_function.id_
+            return self.current_class.id_ if self.current_class else self.current_function.id_
 
     def get_variable(self, id_):
         # Try to find local first

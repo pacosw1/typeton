@@ -78,7 +78,6 @@ class Compiler(Publisher, Subscriber):
         built_in_actions = self._code_generator.builtin_actions
         built_in_actions.remove_temp_subscribers()
 
-        self.remove_temp_subscribers()
         self._allocator.remove_temp_subscribers()
         self._symbol_table.function_table.delete_subscribers()
 
@@ -143,10 +142,11 @@ class Compiler(Publisher, Subscriber):
         """ Makes output json with all the necessary data for execution in the Virtual Machine"""
         constant_table = self._symbol_table.constant_table
         quads = self._code_generator.get_output_quads()
-        function_data = self._symbol_table.function_table.get_output_function_data()
+        function_data = self._symbol_table.global_function_table.get_output_function_data()
+        class_data = self._symbol_table.class_table.get_output_class_data()
 
         output = OutputFile(constant_table, function_data,
-                            quads, self._allocator._segments[Layers.CONSTANT.value].end+1)
+                            quads, self._allocator._segments[Layers.CONSTANT.value].end+1, class_data)
         return jsonpickle.encode(output)
 
     def _display_tables(self):
@@ -394,8 +394,9 @@ class Compiler(Publisher, Subscriber):
                   | while
                   | input
                   | assign
-                  | call return_type_warning
+                  | call
                   | return
+                  | constant_object resolve_object
                   | delete_heap_memory
         """
 
@@ -405,16 +406,6 @@ class Compiler(Publisher, Subscriber):
         """
         var = self._symbol_table.function_table.get_variable(p[2])
         self._code_generator.object_actions.free_heap_memory(var)
-
-    def p_return_type_warning(self, p):
-        """
-        return_type_warning :
-        """
-        id_ = self._symbol_table.function_table.current_function_call_id_
-        type_ = self._symbol_table.function_table.functions[id_].type_
-        if type_ is not ValueType.VOID:
-            print(
-                f'Warning, function {id_} returns a {type_.value}, but is unused')
 
     def p_while(self, p):
         """
@@ -543,6 +534,8 @@ class Compiler(Publisher, Subscriber):
         self._code_generator.object_actions.set_parse_type(0)
         self.p_push_operator('(')
 
+        print(p[-1])
+
         variable = self._symbol_table.function_table.get_variable(
             p[-1])
         if variable.class_id is None:
@@ -583,8 +576,8 @@ class Compiler(Publisher, Subscriber):
     # TODO update grammar diagram (added call_body, renamed call1 -> call_parameters
     def p_call(self, p):
         """
-        call : ID verify_function_existence LPAREN gen_are_memory call_parameters RPAREN verify_param_count generate_go_sub
-             | ID verify_function_existence LPAREN gen_are_memory RPAREN verify_param_count generate_go_sub
+        call : ID verify_function_existence  LPAREN gen_are_memory call_parameters RPAREN verify_param_count generate_go_sub
+             | ID verify_function_existence  LPAREN gen_are_memory RPAREN verify_param_count generate_go_sub
         """
 
     def p_call_parameters(self, p):
@@ -599,20 +592,19 @@ class Compiler(Publisher, Subscriber):
         """
         verify_function_existence :
         """
+        # resolve previous nested objects
+        self._code_generator.object_actions.resolve_function_object()
 
         # check if function called by object
-        # if len(self._code_generator.object_actions.object_stack) > 0:
-        #     # dont pop as we need pointer to create invisible self parameter
-        #     obj = self._code_generator.object_actions.object_stack[-1]
-        #     if obj.type_ in PRIMITIVES:
-        #         self.handle_event(Event(CompilerEvent.STOP_COMPILE, CompilerError(
-        #             f'Cannot call function {p[-1]} on primitive value{obj.id_}')))
-        #     # change function context to class
-        #     self._symbol_table.change_class_functions(obj.class_id)
+        if len(self._code_generator.object_actions.next_function_object) > 0:
+            # dont remove it yet
+            obj = self._code_generator.object_actions.next_function_object[-1]
+            # function table context for specific class
+            # self.remove_temp_function_subs()
+            self._symbol_table.set_class_functions(obj.class_id)
+            # self.init_current_function_table()
 
         self._symbol_table.function_table.verify_function_exists(p[-1])
-        # self._symbol_table.go_back()
-        # set context back to global
 
     def p_verify_param_count(self, p):
         """
@@ -621,7 +613,7 @@ class Compiler(Publisher, Subscriber):
 
         param_count = self._symbol_table.function_table.parameter_count
         signature_len = len(self._symbol_table.function_table.function_data_table[
-            self._symbol_table.function_table.current_function_call_id_].parameter_signature)
+            self._symbol_table.function_table.current_function_call_id_[-1]].parameter_signature)
 
         if param_count + 1 != signature_len and (signature_len != 0 and param_count == 0):
             self.handle_event(Event(CompilerEvent.STOP_COMPILE, CompilerError(
@@ -632,8 +624,14 @@ class Compiler(Publisher, Subscriber):
         generate_go_sub :
         """
         # TODO move to function table
-        id_ = self._symbol_table.function_table.current_function_call_id_
-        self._code_generator.function_actions.generate_go_sub(id_)
+        id_ = self._symbol_table.function_table.current_function_call_id_[-1]
+        current_class = self._symbol_table.function_table.current_class
+
+        class_id = 'global'
+        if current_class is not None:
+            class_id = current_class.id_
+
+        self._code_generator.function_actions.generate_go_sub(id_, class_id)
 
         # reset
 
@@ -646,14 +644,17 @@ class Compiler(Publisher, Subscriber):
         self.p_push_operator('(')
         # if in class at self param
 
-        self._code_generator.function_actions.generate_are(func_id)
+        if self._symbol_table.in_class:
+            self._code_generator.function_actions.generate_are(func_id, self._symbol_table.function_table.current_class.id_)
+        else:
+            self._code_generator.function_actions.generate_are(func_id)
 
         # Generate invisible self parameter if class function call
         if self._symbol_table.in_class:
-            # pop self
-            class_object = self._code_generator.object_actions.object_stack.pop()
+            print('in class, adding self to function')
+            # pop function's object to create a type with that reference
+            class_object = self._code_generator.object_actions.next_function_object.pop()
             self._code_generator.function_actions.add_self_param(class_object)
-            self._symbol_table.function_table.parameter_count += 1
 
     def p_verify_parameter_signature(self, p):
         """
@@ -661,7 +662,10 @@ class Compiler(Publisher, Subscriber):
         """
         # Todo add this into function directory
         func_table = self._symbol_table.function_table
-        current_func = func_table.function_data_table[func_table.current_function_call_id_]
+        current_func = func_table.function_data_table.get(func_table.current_function_call_id_[-1])
+        if current_func is None:
+            self.handle_event(Event(CompilerEvent.STOP_COMPILE, CompilerError(
+                f'Function {func_table.current_function_call_id_[-1]} does not exist in class {func_table.current_class.id_ if func_table.current_class is not None else "global"}')))
 
         if func_table.parameter_count >= len(current_func.parameter_signature):
             self.handle_event(Event(CompilerEvent.STOP_COMPILE, CompilerError(
@@ -758,7 +762,7 @@ class Compiler(Publisher, Subscriber):
         add_call_operator :
         """
 
-        id_ = self._symbol_table.function_table.current_function_call_id_
+        id_ = self._symbol_table.function_table.current_function_call_id_.pop()
         type_ = self._symbol_table.function_table.functions[id_].type_
         address = self._allocator.allocate_address(type_, Layers.TEMPORARY)
 
@@ -772,6 +776,32 @@ class Compiler(Publisher, Subscriber):
         # self._symbol_table.go_back()
         # self.remove_temp_function_subs()
 
+    def p_object_call_operator(self, p):
+        """
+        object_call_operator :
+        """
+
+        # don't resolve object since its a function
+        self._code_generator.object_actions.set_parse_type(2)
+
+        id_ = self._symbol_table.function_table.current_function_call_id_.pop()
+
+        type_ = self._symbol_table.function_table.functions[id_].type_
+
+        if type_ is not ValueType.VOID:
+            address = self._allocator.allocate_address(type_, Layers.TEMPORARY)
+
+            self.broadcast(
+                Event(FunctionTableEvents.ADD_TEMP, (type_, address, None)))
+
+            self._code_generator.expression_actions.add_call_assign(address, type_)
+        self.p_push_operator(')')  # for function call
+
+        # change back to global context
+        # self.remove_temp_function_subs()
+        self._symbol_table.go_back()
+        # self.init_current_function_table()
+
     def p_constant2(self, p):
         """
         constant2 : ID push_variable
@@ -781,21 +811,19 @@ class Compiler(Publisher, Subscriber):
         """
         object_property : ID push_object_property PERIOD object_property
                         | ID push_object_property
-
+                        | call object_call_operator
         """
 
     def p_set_resolve_type(self, p):
         """
         set_resolve_type :
         """
-
         self._code_generator.object_actions.set_parse_type(2)
 
     def p_push_object_property(self, p):
         """
         push_object_property :
         """
-
         self._code_generator.object_actions.push_object_property(p[-1])
 
     def p_comp(self, p):
@@ -1048,7 +1076,7 @@ class Compiler(Publisher, Subscriber):
     # -- ERROR -----------------------
 
     def p_error(self, p):
-
+        self.display_debug()
         error_message = 'Syntax error'
         if p:
 
