@@ -35,12 +35,13 @@ class FunctionActions(Publisher, Subscriber):
         quad = Quad(operation=OperationType.GOTO, result_address="main")
         self.quad_list.insert(0, quad)
 
-    def generate_are(self, id_):
-        quad = Quad(operation=OperationType.ARE, result_address=id_)
+    def generate_are(self, id_, class_id='global'):
+        quad = Quad(operation=OperationType.ARE, left_address=class_id, result_address=id_)
         self.quad_list.append(quad)
 
-    def generate_go_sub(self, id_):
-        quad = Quad(operation=OperationType.GOSUB, result_address=id_)
+    def generate_go_sub(self, id_, class_id='global'):
+        print(id_, class_id, "wtf man")
+        quad = Quad(operation=OperationType.GOSUB, left_address=class_id, result_address=id_)
         self.quad_list.append(quad)
 
     def verify_parameter_type(self, type_: ValueType, param_id, in_class=False):
@@ -62,6 +63,7 @@ class FunctionActions(Publisher, Subscriber):
         # self.operand_list.append(
         #     Operand(ValueType.POINTER, obj.address_, is_class_param=False))
 
-        quad = Quad(operation=OperationType.PARAM,
-                    left_address=obj.address_, right_address=0)
+        print('adding self param', obj.address_)
+
+        quad = Quad(operation=OperationType.PARAM, left_address=obj.address_, right_address=0)
         self.quad_list.append(quad)

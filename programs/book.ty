@@ -25,6 +25,10 @@ func test2(x: Int) -> Int {
     return x * 2
 }
 
+func test3(x: Int) -> String {
+    return "hello"
+}
+
 func main() -> {
 
     var book: Book
@@ -35,14 +39,17 @@ func main() -> {
     print(book.author)
     print(book.name)
 
-    test(10)
+    // test(10)
 
-    var x: Int
-    x = test2(20)
-    print(x)
+    // var x: Int
+    // x = test2(20)
+    // print(x)
+
+    var i: String
+    i = book.getName()
 
 
-    // i = book.getName()
+    i = test3(3)
 
 
     // delete book3

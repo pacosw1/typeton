@@ -28,9 +28,10 @@ class SymbolTable:
         self.current_function_table = self.class_table.current_class.function_table
         self.in_class = True
 
-    def get_class_functions(self, id_):
+    def set_class_functions(self, id_):
         print('changing class')
-        return self.class_table.classes[id_].function_table
+        self.current_function_table = self.class_table.classes[id_].function_table
+        self.in_class = True
 
     def end_class(self):
         print('end_class')
