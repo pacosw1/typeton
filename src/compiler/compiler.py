@@ -78,7 +78,6 @@ class Compiler(Publisher, Subscriber):
         built_in_actions = self._code_generator.builtin_actions
         built_in_actions.remove_temp_subscribers()
 
-        self.remove_temp_subscribers()
         self._allocator.remove_temp_subscribers()
         self._symbol_table.function_table.delete_subscribers()
 
@@ -577,8 +576,8 @@ class Compiler(Publisher, Subscriber):
     # TODO update grammar diagram (added call_body, renamed call1 -> call_parameters
     def p_call(self, p):
         """
-        call : ID verify_function_existence LPAREN gen_are_memory call_parameters RPAREN verify_param_count generate_go_sub
-             | ID verify_function_existence LPAREN gen_are_memory RPAREN verify_param_count generate_go_sub
+        call : ID verify_function_existence  LPAREN gen_are_memory call_parameters RPAREN verify_param_count generate_go_sub
+             | ID verify_function_existence  LPAREN gen_are_memory RPAREN verify_param_count generate_go_sub
         """
 
     def p_call_parameters(self, p):
@@ -593,17 +592,17 @@ class Compiler(Publisher, Subscriber):
         """
         verify_function_existence :
         """
-        # function context defaults to global
+        # resolve previous nested objects
+        self._code_generator.object_actions.resolve_function_object()
 
         # check if function called by object
-        if len(self._code_generator.object_actions.object_stack) > 0:
-            # dont pop as we need pointer to create invisible self parameter
-            obj = self._code_generator.object_actions.object_stack[-1]
-            if obj.type_ in PRIMITIVES:
-                self.handle_event(Event(CompilerEvent.STOP_COMPILE, CompilerError(
-                    f'Cannot call function {p[-1]} on primitive value{obj.id_}')))
-            # change function context to class
+        if len(self._code_generator.object_actions.next_function_object) > 0:
+            # dont remove it yet
+            obj = self._code_generator.object_actions.next_function_object[-1]
+            # function table context for specific class
+            # self.remove_temp_function_subs()
             self._symbol_table.set_class_functions(obj.class_id)
+            # self.init_current_function_table()
 
         self._symbol_table.function_table.verify_function_exists(p[-1])
 
@@ -645,7 +644,7 @@ class Compiler(Publisher, Subscriber):
         self.p_push_operator('(')
         # if in class at self param
 
-        if self._symbol_table.function_table.current_class is not None:
+        if self._symbol_table.in_class:
             self._code_generator.function_actions.generate_are(func_id, self._symbol_table.function_table.current_class.id_)
         else:
             self._code_generator.function_actions.generate_are(func_id)
@@ -653,8 +652,8 @@ class Compiler(Publisher, Subscriber):
         # Generate invisible self parameter if class function call
         if self._symbol_table.in_class:
             print('in class, adding self to function')
-            # pop self
-            class_object = self._code_generator.object_actions.object_stack.pop()
+            # pop function's object to create a type with that reference
+            class_object = self._code_generator.object_actions.next_function_object.pop()
             self._code_generator.function_actions.add_self_param(class_object)
 
     def p_verify_parameter_signature(self, p):
@@ -663,9 +662,10 @@ class Compiler(Publisher, Subscriber):
         """
         # Todo add this into function directory
         func_table = self._symbol_table.function_table
-        current_func = func_table.function_data_table[func_table.current_function_call_id_[-1]]
-
-        print(current_func.parameter_signature)
+        current_func = func_table.function_data_table.get(func_table.current_function_call_id_[-1])
+        if current_func is None:
+            self.handle_event(Event(CompilerEvent.STOP_COMPILE, CompilerError(
+                f'Function {func_table.current_function_call_id_[-1]} does not exist in class {func_table.current_class.id_ if func_table.current_class is not None else "global"}')))
 
         if func_table.parameter_count >= len(current_func.parameter_signature):
             self.handle_event(Event(CompilerEvent.STOP_COMPILE, CompilerError(
@@ -798,7 +798,9 @@ class Compiler(Publisher, Subscriber):
         self.p_push_operator(')')  # for function call
 
         # change back to global context
+        # self.remove_temp_function_subs()
         self._symbol_table.go_back()
+        # self.init_current_function_table()
 
     def p_constant2(self, p):
         """

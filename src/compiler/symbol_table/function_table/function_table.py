@@ -136,11 +136,10 @@ class FunctionTable(Publisher, Subscriber):
         self.broadcast(Event(CompilerEvent.STOP_COMPILE, error))
 
     def verify_function_exists(self, id_):
-        # print(f'Verifying function {id_} exists')
         if self.functions.get(id_) is None:
             self.broadcast(Event(
                 CompilerEvent.STOP_COMPILE,
-                CompilerError(f'Invalid Function Call: Function with name {id_} does not exist')))
+                CompilerError(f'Invalid Function Call: Function with name {id_} does not exist inside {self.current_class.id_ if self.current_class is not None else "global"}')))
         self.current_function_call_id_.append(id_)
 
     def generate_are_memory(self):
@@ -284,7 +283,7 @@ class FunctionTable(Publisher, Subscriber):
 
     def current_trace(self):
         if self.current_function:
-            return self.current_function.id_
+            return self.current_class.id_ if self.current_class else self.current_function.id_
 
     def get_variable(self, id_):
         # Try to find local first
