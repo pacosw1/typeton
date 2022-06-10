@@ -89,6 +89,7 @@ class VirtualMachine(Subscriber):
         self._quads: Quad = None
         self._function_data: Dict[str, FunctionData] = {}
         self.pending_return = []
+        self._class_data = {}
         self.object_heap: Heap = None
 
         self._memory = {}
@@ -151,8 +152,14 @@ class VirtualMachine(Subscriber):
         self._quads = jsonpickle.decode(compiled_program.quad_list)
 
         # complex objects require additional decoding
-        for key, value in compiled_program.function_data.items():
+        for key, value in compiled_program.function_data.global_.items():
             self._function_data[key] = jsonpickle.decode(value)
+
+        for key, value in compiled_program.function_data.class_.items():
+            self._class_data[key] = jsonpickle.decode(value)
+
+            for func_key, func_value in self._class_data[key].function_data.items():
+                self._class_data[key].function_data[func_key] = jsonpickle.decode(func_value)
 
     def _execute(self, quad):
         operation = quad.operation
@@ -221,8 +228,6 @@ class VirtualMachine(Subscriber):
                 p_left = self._get_value(quad.left_address)
             if action_right is not None:
                 p_right = self._get_value(quad.right_address)
-
-            # print("left:", p_left, "right:", p_right)
 
             if p_left is None or p_right is None:
                 self.handle_event(
@@ -332,6 +337,7 @@ class VirtualMachine(Subscriber):
 
     def __execute_function_call(self, quad):
         if quad.operation is OperationType.PARAM:
+
             self._map_argument_to_parameter(
                 quad.left_address, quad.right_address)
             self._ip += 1
@@ -339,18 +345,17 @@ class VirtualMachine(Subscriber):
             if len(self.context_jump_locations) == 0:
                 self._delete_context_memory()
                 self._ip = len(self._quads) + 1
-                print("Main function ended")
                 return
 
             self._ip = self.context_jump_locations.pop()
             self._delete_context_memory()
         elif quad.operation is OperationType.ARE:
-            self._assign_context_memory(quad.result_address)
+            self._assign_context_memory(quad.result_address, quad.left_address)
             self._ip += 1
         elif quad.operation is OperationType.GOSUB:
             self.context_memory.append(self.context_pending_assigment.pop())
             self.context_jump_locations.append(self._ip + 1)
-            self._ip = self.get_function_start(quad.result_address)
+            self._ip = self.get_function_start(quad.result_address, quad.left_address)
         elif quad.operation is OperationType.RETURN:
             value = self._get_value(quad.result_address)
             self.pending_return.append(value)
@@ -405,21 +410,30 @@ class VirtualMachine(Subscriber):
     # -- DEBUG methods ---------------------------
 
     def _map_argument_to_parameter(self, argument_address, parameter_index):
-        previous_context = self.context_memory[-1]
+        previous_context: ContextMemory = self.context_memory[-1]
+
+        _, pure = pure_address(argument_address)
         argument_value = previous_context.get(argument_address)
 
-        new_context = self.context_pending_assigment[-1]
+        new_context: ContextMemory = self.context_pending_assigment[-1]
         new_context.map_parameter(
-            argument_value, argument_address, parameter_index)
+            argument_value, pure, parameter_index)
 
-    def _assign_context_memory(self, id_):
-        size_data = self._function_data[id_].size_data
+    def _assign_context_memory(self, id_, scope):
+        size_data = None
+        if scope == "global":
+            size_data = self._function_data[id_].size_data
+        else:
+            size_data = self._class_data[scope].function_data[id_].size_data
+
         ctx = ContextMemory(
             size_data, self._constant_table, self.global_memory, self.object_heap)
         # don't assign until all parameters are calculated using previous era
         self.context_pending_assigment.append(ctx)
 
-    def get_function_start(self, id_):
+    def get_function_start(self, id_, scope):
+        if scope != "global":
+            return self._class_data[scope].function_data[id_].start_quad
         return self._function_data[id_].start_quad
 
     def _delete_context_memory(self):

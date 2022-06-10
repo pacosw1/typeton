@@ -40,7 +40,6 @@ class FunctionActions(Publisher, Subscriber):
         self.quad_list.append(quad)
 
     def generate_go_sub(self, id_, class_id='global'):
-        print(id_, class_id, "wtf man")
         quad = Quad(operation=OperationType.GOSUB, left_address=class_id, result_address=id_)
         self.quad_list.append(quad)
 
@@ -65,5 +64,5 @@ class FunctionActions(Publisher, Subscriber):
 
         print('adding self param', obj.address_)
 
-        quad = Quad(operation=OperationType.PARAM, left_address=obj.address_, right_address=0)
+        quad = Quad(operation=OperationType.PARAM, left_address=f'&{obj.address_}', right_address=0)
         self.quad_list.append(quad)

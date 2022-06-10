@@ -2,13 +2,18 @@ class Book {
     name: String
     author: String
     sequel: Book
+    age: Int
 
-    func getName(x: String) -> String {
-        return x
+    func getName() -> String {
+        return self.name
     }
 
     func setName(x: String) -> {
         self.name = x
+    }
+
+    func mult_age(x: Int) -> Int {
+        return self.age * x
     }
 
     func getAuthor() -> String {
@@ -36,20 +41,20 @@ func main() -> {
     book = new Book()
     book.author = "J.K. Rowling"
     book.name = "Harry Potter"
-    print(book.author)
+    book.age = 10
+
+
+    print(book.getAuthor())
+    var x: Int
+    x = book.mult_age(5)
+    print(x)
+
+    // book.setName("Harry Potter and the Philosopher's Stone")
+
     print(book.name)
+    // print(book.sequel.getName())
+    // print(book.sequel.getAuthor())
 
-    // test(10)
-
-    // var x: Int
-    // x = test2(20)
-    // print(x)
-
-    var i: String
-    i = book.getName()
-
-
-    i = test3(3)
 
 
     // delete book3

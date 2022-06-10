@@ -96,7 +96,6 @@ class ObjectActions(Publisher):
             ValueType.POINTER, Layers.TEMPORARY)
         self.broadcast(Event(FunctionTableEvents.ADD_TEMP,
                        (ValueType.POINTER, property_pointer, property_data.class_id)))
-        print('adding temp', property_pointer)
 
         if property_data.type_ == ValueType.POINTER:
             if self.count < 2:

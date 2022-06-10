@@ -143,10 +143,11 @@ class Compiler(Publisher, Subscriber):
         """ Makes output json with all the necessary data for execution in the Virtual Machine"""
         constant_table = self._symbol_table.constant_table
         quads = self._code_generator.get_output_quads()
-        function_data = self._symbol_table.function_table.get_output_function_data()
+        function_data = self._symbol_table.global_function_table.get_output_function_data()
+        class_data = self._symbol_table.class_table.get_output_class_data()
 
         output = OutputFile(constant_table, function_data,
-                            quads, self._allocator._segments[Layers.CONSTANT.value].end+1)
+                            quads, self._allocator._segments[Layers.CONSTANT.value].end+1, class_data)
         return jsonpickle.encode(output)
 
     def _display_tables(self):
@@ -396,7 +397,7 @@ class Compiler(Publisher, Subscriber):
                   | assign
                   | call
                   | return
-                  | constant_object
+                  | constant_object resolve_object
                   | delete_heap_memory
         """
 
@@ -534,6 +535,8 @@ class Compiler(Publisher, Subscriber):
         self._code_generator.object_actions.set_parse_type(0)
         self.p_push_operator('(')
 
+        print(p[-1])
+
         variable = self._symbol_table.function_table.get_variable(
             p[-1])
         if variable.class_id is None:
@@ -625,7 +628,11 @@ class Compiler(Publisher, Subscriber):
         id_ = self._symbol_table.function_table.current_function_call_id_[-1]
         current_class = self._symbol_table.function_table.current_class
 
-        self._code_generator.function_actions.generate_go_sub(id_, current_class.id_ if current_class is not None else None)
+        class_id = 'global'
+        if current_class is not None:
+            class_id = current_class.id_
+
+        self._code_generator.function_actions.generate_go_sub(id_, class_id)
 
         # reset
 
@@ -638,8 +645,6 @@ class Compiler(Publisher, Subscriber):
         self.p_push_operator('(')
         # if in class at self param
 
-        print('func_id', func_id)
-
         if self._symbol_table.function_table.current_class is not None:
             self._code_generator.function_actions.generate_are(func_id, self._symbol_table.function_table.current_class.id_)
         else:
@@ -651,7 +656,6 @@ class Compiler(Publisher, Subscriber):
             # pop self
             class_object = self._code_generator.object_actions.object_stack.pop()
             self._code_generator.function_actions.add_self_param(class_object)
-            self._symbol_table.function_table.parameter_count += 1
 
     def p_verify_parameter_signature(self, p):
         """
@@ -660,6 +664,8 @@ class Compiler(Publisher, Subscriber):
         # Todo add this into function directory
         func_table = self._symbol_table.function_table
         current_func = func_table.function_data_table[func_table.current_function_call_id_[-1]]
+
+        print(current_func.parameter_signature)
 
         if func_table.parameter_count >= len(current_func.parameter_signature):
             self.handle_event(Event(CompilerEvent.STOP_COMPILE, CompilerError(
@@ -1067,7 +1073,7 @@ class Compiler(Publisher, Subscriber):
     # -- ERROR -----------------------
 
     def p_error(self, p):
-
+        self.display_debug()
         error_message = 'Syntax error'
         if p:
 
