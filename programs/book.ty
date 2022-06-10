@@ -3,8 +3,8 @@ class Book {
     author: String
     sequel: Book
 
-    func getName() -> String {
-       return self.name
+    func getName() -> Int {
+        return 0
     }
 }
 
@@ -17,18 +17,8 @@ func main() -> {
     book.name = "Harry Potter"
     book.author = "J.K. Rowling"
 
-    var book2: Book
+    book.getName()
 
-    book2 = new Book()
-    book2.name = "Harry Potter 2"
-
-    book.sequel = book2
-
-    print("Book name")
-    print(book.name)
-
-    print("Book sequel")
-    print(book.sequel.name)
 
 
     // delete book3

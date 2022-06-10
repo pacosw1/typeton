@@ -5,6 +5,7 @@ from src.compiler.stack_allocator.types import ValueType
 from src.compiler.symbol_table.function_table.function_table import FunctionTable
 from src.utils.display import make_table, TableOptions
 from src.utils.observer import Event, Publisher
+from src.virtual_machine.types import FunctionData
 
 
 class ClassVariable:
@@ -15,11 +16,19 @@ class ClassVariable:
         self.class_id = None
 
 
+class ClassData:
+    def __init__(self, id_, size, function_data):
+        self.id_ = id_
+        self.function_data: Dict[str, FunctionData] = function_data
+        self.size = size
+
+
 class ClassTable(Publisher):
     def __init__(self):
         super().__init__()
 
         self.classes: Dict[str, Class] = {}
+        self.class_data: Dict[str, ClassData] = {}
         self.current_class: Class = None
 
     def add_class(self, id_):
@@ -51,6 +60,11 @@ class ClassTable(Publisher):
 
     def end_class(self):
         self.current_class.size = len(self.current_class.variables)
+
+        self.current_class.function_table.receiveing_off = True
+
+        self.class_data[self.current_class.id_] = ClassData(
+            self.current_class.id_, self.current_class.size, self.current_class.function_table.function_data())
 
 
 class Class:

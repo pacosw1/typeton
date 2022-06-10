@@ -30,43 +30,29 @@ class Compiler(Publisher, Subscriber):
         self._code_generator = CodeGenerator(
             self._allocator, self._symbol_table.class_table.classes)
 
-        object_actions = self._code_generator.object_actions
-        object_actions.add_subscriber(self._symbol_table.function_table, {})
-
         # subscribe to expression code generator
         expressions = self._code_generator.expression_actions
-        expressions.add_subscriber(self._symbol_table.function_table, {})
         expressions.add_subscriber(self._allocator, {})
 
         # subscribe to array actions
         array_actions = self._code_generator.array_actions
-        array_actions.add_subscriber(self._symbol_table.function_table, {})
         array_actions.add_subscriber(self, {})
 
         # subscribe to builtin actions
         built_in_actions = self._code_generator.builtin_actions
-        built_in_actions.add_subscriber(self._symbol_table.function_table, {})
         built_in_actions.add_subscriber(self, {})
-
-        # subscribers for function table
-        functions = self._symbol_table.function_table
-        functions.add_subscriber(self._code_generator.function_actions, {})
-        functions.add_subscriber(self._code_generator.expression_actions, {})
-        functions.add_subscriber(self._allocator, {})
 
         # subscribe to compiler events
         self.add_subscriber(self._code_generator.function_actions, {})
-        self.add_subscriber(self._symbol_table.function_table, {})
-
-        self._allocator.add_subscriber(self._symbol_table.function_table, {})
 
         # subscribe compiler to error messages
         self._allocator.add_subscriber(self, {})
         self._code_generator.expression_actions.add_subscriber(self, {})
         self._symbol_table.class_table.add_subscriber(self, {})
         self._symbol_table.constant_table.add_subscriber(self, {})
-        self._symbol_table.function_table.add_subscriber(self, {})
         self._code_generator.object_actions.add_subscriber(self, {})
+
+        self.init_current_function_table()
 
         self.syntax_error = None
 
@@ -74,6 +60,40 @@ class Compiler(Publisher, Subscriber):
     def handle_event(self, event):
         if event.type_ is CompilerEvent.STOP_COMPILE:
             self.p_error(event.payload)
+
+    def init_current_function_table(self):
+
+        object_actions = self._code_generator.object_actions
+        object_actions.add_subscriber(
+            self._symbol_table.function_table, {})
+
+        # subscribe to expression code generator
+        expressions = self._code_generator.expression_actions
+        expressions.add_subscriber(
+            self._symbol_table.function_table, {})
+
+        # subscribe to array actions
+        array_actions = self._code_generator.array_actions
+        array_actions.add_subscriber(
+            self._symbol_table.function_table, {})
+
+        # subscribe to builtin actions
+        built_in_actions = self._code_generator.builtin_actions
+        built_in_actions.add_subscriber(
+            self._symbol_table.function_table, {})
+
+        self._symbol_table.function_table.add_subscribers(
+            [
+                self._allocator,
+                self._code_generator.function_actions,
+                self._code_generator.expression_actions,
+                self
+            ])
+
+        self.add_subscriber(self._symbol_table.function_table, {})
+
+        self._allocator.add_subscriber(
+            self._symbol_table.function_table, {})
 
     def compile(self, data: str, debug=False):
         """
@@ -157,6 +177,8 @@ class Compiler(Publisher, Subscriber):
         """
         self._symbol_table.class_table.add_class(p[-1])
         self._symbol_table.start_class()
+
+        self.init_current_function_table()
 
     def p_end_class(self, p):
         """
@@ -302,7 +324,9 @@ class Compiler(Publisher, Subscriber):
         check_function_type :
         """
         if self._symbol_table.function_table.current_function.is_pending_type():
-            self._symbol_table.function_table.current_function.set_type("Void")
+            print('pending type')
+            self._symbol_table.function_table.current_function.set_type(
+                "Void")
 
     def p_init_block1(self, p):
         """
@@ -435,7 +459,8 @@ class Compiler(Publisher, Subscriber):
         push_variable_class :
         """
         operand: Operand = self._code_generator.peak_operand()
-        var = self._symbol_table.function_table.get_id(address=operand.address)
+        var = self._symbol_table.function_table.get_id(
+            address=operand.address)
 
         if var.class_id is None:
             self.handle_event(
@@ -496,7 +521,8 @@ class Compiler(Publisher, Subscriber):
         self._code_generator.object_actions.set_parse_type(0)
         self.p_push_operator('(')
 
-        variable = self._symbol_table.function_table.get_variable(p[-1])
+        variable = self._symbol_table.function_table.get_variable(
+            p[-1])
         if variable.class_id is None:
             self.handle_event(Event(CompilerEvent.STOP_COMPILE, CompilerError(
                 f'Variable {p[-1]} is not an object')))
@@ -749,7 +775,8 @@ class Compiler(Publisher, Subscriber):
             p[-1], self._code_generator.get_next_quad())
 
         if self._symbol_table.in_class:
-            self._symbol_table.function_table.set_self_param(self._allocator)
+            self._symbol_table.function_table.set_self_param(
+                self._allocator)
 
     def p_validate_return(self, p):
         """
@@ -787,13 +814,15 @@ class Compiler(Publisher, Subscriber):
         add_param :
         """
 
-        self._symbol_table.function_table.add_variable(p[-1], is_param=True)
+        self._symbol_table.function_table.add_variable(
+            p[-1], is_param=True)
 
     def p_add_variable(self, p):
         """
         add_variable :
         """
-        self._symbol_table.function_table.add_variable(p[-1], is_param=False)
+        self._symbol_table.function_table.add_variable(
+            p[-1], is_param=False)
 
     def p_add_dimension(self, p):
         """
@@ -810,14 +839,16 @@ class Compiler(Publisher, Subscriber):
             self._allocator, self._symbol_table.constant_table)
         var = self._symbol_table.function_table.current_function.current_variable
         var.array_type = var.type_
-        self._symbol_table.function_table.set_type("Pointer", self._allocator)
+        self._symbol_table.function_table.set_type(
+            "Pointer", self._allocator)
         self._code_generator.array_actions.initialize_array(size, var)
 
     def p_set_type(self, p):
         """
         set_type :
         """
-        self._symbol_table.function_table.set_type(p[-1], self._allocator)
+        self._symbol_table.function_table.set_type(
+            p[-1], self._allocator)
     # used to check on stack and execute quad operations
 
     def p_execute_priority_0(self, p):
@@ -910,7 +941,8 @@ class Compiler(Publisher, Subscriber):
         """
         push_variable :
         """
-        variable = self._symbol_table.function_table.get_variable(p[-1])
+        variable = self._symbol_table.function_table.get_variable(
+            p[-1])
         self._code_generator.push_variable(
             p[-1], variable.type_, variable.address_, variable.class_id)
 
@@ -922,7 +954,8 @@ class Compiler(Publisher, Subscriber):
         self.p_push_operator('(')
         # TODO: Clean this mess
         operand = self._code_generator.peak_operand()
-        variable = self._symbol_table.function_table.get_id(operand.address)
+        variable = self._symbol_table.function_table.get_id(
+            operand.address)
 
         dimensions = []
         for dim_data in reversed(variable.dim_data_list):

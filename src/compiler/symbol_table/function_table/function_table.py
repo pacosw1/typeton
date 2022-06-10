@@ -32,6 +32,7 @@ class FunctionTable(Publisher, Subscriber):
     def __init__(self,  class_table, current_class=None):
         super().__init__()
         self.functions = {}
+        self.receiveing_off = False
         self.current_class = current_class
         self.class_table = class_table
         # keep track of them so we don't add repeat numbers to function size
@@ -60,20 +61,36 @@ class FunctionTable(Publisher, Subscriber):
             return TypeContext.FUNCTION
         return TypeContext.VARIABLE
 
+    def add_subscribers(self, subscribers):
+        for sub in subscribers:
+            self.add_subscriber(sub, {})
+
     def handle_event(self, event: Event):
         """Receive all subscribed events here"""
         from src.compiler.code_generator.expression import ExpressionActions
         from src.compiler.code_generator.array import ArrayEvents
 
+        if self.receiveing_off is True:
+            # print(
+            #     f'Received off for event {event} in class {self.current_class}')
+            return
+
         if event.type_ is FunctionTableEvents.ADD_TEMP or event.type_ is ArrayEvents.ADD_TEMP:
+            if self.current_function is None:
+                print(self.current_class.id_)
+                return
             type_, address, class_id = event.payload
             self.__handle_add_temporal(type_, address, class_id)
+            # print(f'Added temporal {address}')
         elif event.type_ is CompilerEvent.RELEASE_FUNCTION:
+            print(f'Releasing function {self.current_function.id_}')
             self.end_function()
 
     def __handle_add_temporal(self, type_, address, class_id=None):
         if address in self.temporal_hash:
             return
+
+        # print(f'Adding temporal {address}')
 
         self.function_data().add_variable_size(ValueType(type_), Layers.TEMPORARY)
         var = Variable(None)
@@ -83,6 +100,7 @@ class FunctionTable(Publisher, Subscriber):
         self.temporal_hash[address] = var
 
     def get_variable_by_address(self, address):
+        # print(f'Getting variable by address {address}')
         """ Returns variable by address """
         if self.temporal_hash.get(address) is not None:
             return self.temporal_hash[address]
@@ -104,6 +122,7 @@ class FunctionTable(Publisher, Subscriber):
             quad_start += 1
 
         if self.functions.get(id_) is None:
+            # print(f'Adding function {id_}')
             reference = Function(id_=id_)
             self.functions[id_] = reference
             self.current_function = reference
@@ -118,6 +137,7 @@ class FunctionTable(Publisher, Subscriber):
         self.broadcast(Event(CompilerEvent.STOP_COMPILE, error))
 
     def verify_function_exists(self, id_):
+        # print(f'Verifying function {id_} exists')
         if self.functions.get(id_) is None:
             self.broadcast(Event(
                 CompilerEvent.STOP_COMPILE,
@@ -131,6 +151,7 @@ class FunctionTable(Publisher, Subscriber):
         self.parameter_count = 0
 
     def add_variable(self, id_, is_param):
+        # print(f'Adding variable {id_}')
         """ Add Var to the current function's vars table """
 
         var = self.current_function.add_variable(id_, is_param)
@@ -149,6 +170,7 @@ class FunctionTable(Publisher, Subscriber):
         return self.current_function.allocate_dimensions(layer, memory, constant_table)
 
     def set_self_param(self, allocator):
+        # print(f'Setting self param')
         if self.current_class is None:
             self.broadcast(Event(CompilerEvent.STOP_COMPILE,
                                  CompilerError('Cannot set self parameter without a class')))
@@ -158,6 +180,7 @@ class FunctionTable(Publisher, Subscriber):
                                 Layers.LOCAL, allocator)
 
     def set_type(self, type_, memory: StackAllocator):
+        # print("seting type", type_)
         """ Sets type for function, parameter or variable """
         layer = Layers.GLOBAL if self.current_function.id_ == "global" else Layers.LOCAL
 
@@ -172,10 +195,12 @@ class FunctionTable(Publisher, Subscriber):
             raise Exception("Invalid Type Context")
 
     def _set_function_type(self, type_):
+        # print('setting function type', type_)
         self.current_function.set_type(type_)
         self.function_data().type_ = ValueType(type_)
 
     def _set_param_type(self, type_, layer, memory: StackAllocator):
+        # print('setting param type', type_)
         self.current_function.set_variable_type(type_, layer, memory, None)
         self.function_data().add_variable_size(ValueType(type_), layer)
         self.__add_parameter_signature(type_)
@@ -190,10 +215,14 @@ class FunctionTable(Publisher, Subscriber):
                     Event(CompilerEvent.STOP_COMPILE,
                           CompilerError(f'Class {type_} not found')))
 
+                print(f'Setting variable type {type_}')
+
             self.function_data().add_variable_size(ValueType.POINTER, layer)
             self.current_function.set_variable_type(
                 ValueType.POINTER, layer, memory, type_)
             return
+
+        print(f'Setting variable type not class {type_}')
 
         self.function_data().add_variable_size(ValueType(type_), layer)
         id_ = self.current_function.set_variable_type(
@@ -201,7 +230,8 @@ class FunctionTable(Publisher, Subscriber):
         return id_
 
     def function_data(self):
-        return self.function_data_table[self.current_function.id_]
+        if self.current_function:
+            return self.function_data_table[self.current_function.id_]
 
     def __add_parameter_signature(self, type_):
         self.function_data_table[self.current_function.id_].parameter_signature.append(
@@ -245,6 +275,7 @@ class FunctionTable(Publisher, Subscriber):
     def end_function(self):
         """ Releases Function From Directory and Virtual Memory"""
         self.__validate_return()
+        self.receiveing_off = True
 
         # tell quad generator to generate end_func quad
         self.broadcast(Event(CompilerEvent.GEN_END_FUNC, None))

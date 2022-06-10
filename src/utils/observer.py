@@ -16,6 +16,10 @@ class Subscriber:
         """Subscriber handles event however he wants here"""
         pass
 
+    def disable(self):
+        """Disable the subscriber"""
+        self.disabled = True
+
 
 class Publisher:
     """Class that wants to publish messages to subscribers implements this"""
