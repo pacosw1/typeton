@@ -4,20 +4,28 @@ class Book {
     sequel: Book
     age: Int
 
-    func getName() -> String {
-        return self.name
-    }
-
     func setName(x: String) -> {
         self.name = x
     }
 
-    func mult_age(x: Int) -> Int {
-        return self.age * x
-    }
+    // func mult_age(x: Int) -> Int {
+    //     return self.age * x
+    // }
 
     func getAuthor() -> String {
         return self.author
+    }
+
+    func getName() -> String {
+        return self.name
+    }
+
+    func setAge(x: Int) -> {
+        self.age = x
+    }
+
+    func mult_age(x: Int) -> Int {
+        return self.age * x
     }
 }
 
@@ -35,7 +43,6 @@ func test3(x: Int) -> String {
 }
 
 func main() -> {
-
     var book: Book
 
     book = new Book()
@@ -44,16 +51,21 @@ func main() -> {
     book.age = 10
 
 
-    print(book.getAuthor())
+    // print(book.getAuthor())
     var x: Int
-    x = book.mult_age(5)
-    print(x)
+    print(book.mult_age(2))
 
-    // book.setName("Harry Potter and the Philosopher's Stone")
+    book.setName("Harry Potter and the Philosopher's Stone")
+    print(book.getName())
 
-    print(book.name)
-    // print(book.sequel.getName())
-    // print(book.sequel.getAuthor())
+    book.setAge(50)
+    print(book.age)
+
+    book.sequel = new Book()
+
+    // book.sequel.setName("Harry Potter and the Chamber of Secrets")
+    // print(book.sequel.name)
+
 
 
 

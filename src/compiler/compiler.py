@@ -786,14 +786,15 @@ class Compiler(Publisher, Subscriber):
 
         id_ = self._symbol_table.function_table.current_function_call_id_.pop()
 
-        print('oject id', id_)
         type_ = self._symbol_table.function_table.functions[id_].type_
-        address = self._allocator.allocate_address(type_, Layers.TEMPORARY)
 
-        self.broadcast(
-            Event(FunctionTableEvents.ADD_TEMP, (type_, address, None)))
+        if type_ is not ValueType.VOID:
+            address = self._allocator.allocate_address(type_, Layers.TEMPORARY)
 
-        self._code_generator.expression_actions.add_call_assign(address, type_)
+            self.broadcast(
+                Event(FunctionTableEvents.ADD_TEMP, (type_, address, None)))
+
+            self._code_generator.expression_actions.add_call_assign(address, type_)
         self.p_push_operator(')')  # for function call
 
         # change back to global context
