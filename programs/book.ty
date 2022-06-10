@@ -2,16 +2,28 @@ class Book {
     name: String
     author: String
     sequel: Book
+
+    func getName(x: String) -> String {
+        return x
+    }
+
+    func setName(x: String) -> {
+        self.name = x
+    }
+
+    func getAuthor() -> String {
+        return self.author
+    }
 }
 
-// func test(x: Int) -> {
-//     print(x)
-// }
+func test(x: Int) -> {
+    print(x)
+}
 
-// func test2(x: Int) -> Int {
-//     print(x)
-//     return x * 2
-// }
+func test2(x: Int) -> Int {
+    print(x)
+    return x * 2
+}
 
 func main() -> {
 
@@ -19,7 +31,15 @@ func main() -> {
 
     book = new Book()
     book.author = "J.K. Rowling"
+    book.name = "Harry Potter"
     print(book.author)
+    print(book.name)
+
+    test(10)
+
+    var x: Int
+    x = test2(20)
+    print(x)
 
 
     // i = book.getName()
