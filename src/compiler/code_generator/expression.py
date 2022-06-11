@@ -207,7 +207,6 @@ class ExpressionActions(Publisher, Subscriber):
         # obj.param(obj) = obj.param(obj)
         elif left_obj_param and right_obj_param:
 
-            print("store right ref into left value")
             left.address = f'*{left.address}'
             right.address = f'*{right.address}'
 

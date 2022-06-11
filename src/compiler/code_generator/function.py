@@ -58,11 +58,12 @@ class FunctionActions(Publisher, Subscriber):
                     left_address=operand.address, right_address=param_id)
         self.quad_list.append(quad)
 
-    def add_self_param(self, obj):
+    def add_self_param(self, obj, nested):
         # self.operand_list.append(
         #     Operand(ValueType.POINTER, obj.address_, is_class_param=False))
 
         print('adding self param', obj.address_)
+        action = '*' if nested else '&'
 
-        quad = Quad(operation=OperationType.PARAM, left_address=f'&{obj.address_}', right_address=0)
+        quad = Quad(operation=OperationType.PARAM, left_address=f'{action}{obj.address_}', right_address=0)
         self.quad_list.append(quad)

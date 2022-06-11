@@ -396,7 +396,7 @@ class Compiler(Publisher, Subscriber):
                   | assign
                   | call
                   | return
-                  | constant_object resolve_object
+                  | constant_object
                   | delete_heap_memory
         """
 
@@ -441,6 +441,13 @@ class Compiler(Publisher, Subscriber):
         resolve_object :
         """
         self._code_generator.object_actions.resolve()
+        self.p_push_operator(')')
+
+    def p_resolve_get_object(self, p):
+        """
+        resolve_get_object :
+        """
+        self._code_generator.object_actions.resolve_get()
         self.p_push_operator(')')
 
     def p_other_assing(self, p):
@@ -531,16 +538,17 @@ class Compiler(Publisher, Subscriber):
         """
         push_object :
         """
-        self._code_generator.object_actions.set_parse_type(0)
         self.p_push_operator('(')
 
-        print(p[-1])
+        variable = self._symbol_table.function_table.get_variable(p[-1])
 
-        variable = self._symbol_table.function_table.get_variable(
-            p[-1])
-        if variable.class_id is None:
-            self.handle_event(Event(CompilerEvent.STOP_COMPILE, CompilerError(
-                f'Variable {p[-1]} is not an object')))
+        if variable is None or variable.class_id is None:
+            # check previous context if variable not found locally
+            prev_context = self._symbol_table.current_function_table[-2]
+            variable = prev_context.get_variable(p[-1])
+            if variable is None or variable.class_id is None:
+                self.handle_event(Event(CompilerEvent.STOP_COMPILE, CompilerError(
+                    f'Variable {p[-1]} not found in {self._symbol_table.function_table.current_function.id_}')))
 
         self._code_generator.object_actions.property_parent = variable
         self._code_generator.object_actions.push_object(variable)
@@ -593,10 +601,10 @@ class Compiler(Publisher, Subscriber):
         verify_function_existence :
         """
         # resolve previous nested objects
-        self._code_generator.object_actions.resolve_function_object()
+        valid_object = self._code_generator.object_actions.resolve_function_object()
 
-        # check if function called by object
-        if len(self._code_generator.object_actions.next_function_object) > 0:
+        if valid_object:
+            # check if function called by object
             # dont remove it yet
             obj = self._code_generator.object_actions.next_function_object[-1]
             # function table context for specific class
@@ -654,7 +662,9 @@ class Compiler(Publisher, Subscriber):
             print('in class, adding self to function')
             # pop function's object to create a type with that reference
             class_object = self._code_generator.object_actions.next_function_object.pop()
-            self._code_generator.function_actions.add_self_param(class_object)
+            nested = self._code_generator.object_actions.nested_stack.pop()
+            print(nested)
+            self._code_generator.function_actions.add_self_param(class_object, nested)
 
     def p_verify_parameter_signature(self, p):
         """
@@ -753,7 +763,7 @@ class Compiler(Publisher, Subscriber):
                  | call add_call_operator
                  | call_array 
                  | constant2
-                 | constant_object resolve_object
+                 | constant_object resolve_get_object
         """
         self._code_generator.object_actions.set_parse_type(1)
 
@@ -782,11 +792,10 @@ class Compiler(Publisher, Subscriber):
         """
 
         # don't resolve object since its a function
-        self._code_generator.object_actions.set_parse_type(2)
-
         id_ = self._symbol_table.function_table.current_function_call_id_.pop()
-
         type_ = self._symbol_table.function_table.functions[id_].type_
+
+        print('calling op')
 
         if type_ is not ValueType.VOID:
             address = self._allocator.allocate_address(type_, Layers.TEMPORARY)
