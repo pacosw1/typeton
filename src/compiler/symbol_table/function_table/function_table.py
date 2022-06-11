@@ -134,10 +134,8 @@ class FunctionTable(Publisher, Subscriber):
 
     def verify_function_exists(self, id_):
         if self.functions.get(id_) is None:
-            self.broadcast(Event(
-                CompilerEvent.STOP_COMPILE,
-                CompilerError(f'Invalid Function Call: Function with name {id_} does not exist inside {self.current_class.id_ if self.current_class is not None else "global"}')))
-        self.current_function_call_id_.append(id_)
+            return False
+        return True
 
     def generate_are_memory(self):
         # start counting param signature
@@ -276,7 +274,7 @@ class FunctionTable(Publisher, Subscriber):
         if self.current_function:
             return self.current_class.id_ if self.current_class else self.current_function.id_
 
-    def get_variable(self, id_):
+    def get_variable(self, id_, table_stack=[]):
         # Try to find local first
         variable_table = self.current_function.variables
         if variable_table.get(id_) is not None:
@@ -287,6 +285,16 @@ class FunctionTable(Publisher, Subscriber):
             variable_table = self.functions["global"].variables
             if variable_table.get(id_) is not None:
                 return variable_table[id_]
+
+        count = len(table_stack) - 1
+
+        # check previous contexts
+        while count >= 0:
+            func_table = table_stack[count]
+            variable_table = func_table.current_function.variables
+            if variable_table.get(id_) is not None:
+                return variable_table[id_]
+            count -= 1
 
         # Could not find
         self.broadcast(Event(CompilerEvent.STOP_COMPILE,

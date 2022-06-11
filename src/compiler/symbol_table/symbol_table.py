@@ -28,7 +28,6 @@ class SymbolTable:
 
     def set_class_functions(self, id_):
         self.current_function_table.append(self.class_table.classes[id_].function_table)
-        self.in_class = True
 
     def end_class(self):
 
@@ -38,4 +37,3 @@ class SymbolTable:
 
     def go_back(self):
         self.current_function_table.pop()
-        self.in_class = False
