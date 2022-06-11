@@ -5,7 +5,9 @@ class Book {
     age: Int
 
     func mult_age(x: Int) -> Int {
-        return self.age * x
+        var i: Int
+        i = self.age * 50 - x
+        return i
     }
 
     func setName(x: String) -> {
@@ -38,6 +40,9 @@ func main() -> {
     book.name = "Harry Potter"
     book.age = 10
 
+    delete book
+
+
 
     print(book.getAuthor())
     var x: Int
@@ -53,6 +58,8 @@ func main() -> {
     book.sequel.author = "J.K. Rowling"
     book.sequel.name = "Harry Potter and the Chamber of Secrets"
     book.sequel.age = 100
+
+
 
     
     print(book.mult_age(5000))
@@ -74,10 +81,9 @@ func main() -> {
     book.sequel.setAge(book.age * 500 / book.sequel.age + 32) 
     print(book.sequel.age)
 
-    // // print(book.)
 
 
-    // // // print(book.sequel.age)
+    print(book.sequel.age)
 
     book.sequel.setAuthor("J.K. Rowling 2")
 
@@ -104,7 +110,7 @@ func main() -> {
     
     
 
-    // delete book
+    delete book
 
     // delete book3
 
