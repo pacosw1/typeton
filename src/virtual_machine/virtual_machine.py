@@ -419,6 +419,7 @@ class VirtualMachine(Subscriber):
         new_context.map_parameter(
             argument_value, pure, parameter_index)
 
+    # -- Changes methods ---------------------------
     def _assign_context_memory(self, id_, scope):
         size_data = None
         if scope == "global":

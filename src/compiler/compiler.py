@@ -254,7 +254,7 @@ class Compiler(Publisher, Subscriber):
         """
         set_class_object_type :
         """
-        class_data = self._symbol_table.class_table.classes[p[-1]]
+        class_data = self._symbol_table.class_table.classes.get(p[-1])
         if class_data is None:
             self.handle_event(Event(CompilerEvent.STOP_COMPILE,
                               CompilerError("Class '" + p[-1] + "' not found")))
@@ -605,10 +605,7 @@ class Compiler(Publisher, Subscriber):
         valid_object = self._code_generator.object_actions.resolve_function_object()
         good_table = None
 
-        in_func = False
-
         if valid_object:
-            in_func = True
             # check if function called by object
             # dont remove it yet
             obj = self._code_generator.object_actions.next_function_object[-1]
@@ -640,9 +637,6 @@ class Compiler(Publisher, Subscriber):
         func_call.type_ = good_table.function_data_table[p[-1]].type_
 
         self._code_generator.function_actions.function_call_stack.append(func_call)
-
-        # if in_func is True:
-        #     self._symbol_table.go_back()
 
     def p_verify_param_count(self, p):
         """

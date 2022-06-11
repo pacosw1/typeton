@@ -137,6 +137,7 @@ class FunctionTable(Publisher, Subscriber):
     def verify_function_exists(self, id_):
         if self.functions.get(id_) is None:
             return False
+
         return True
 
     def generate_are_memory(self):
