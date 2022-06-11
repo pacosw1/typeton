@@ -593,10 +593,10 @@ class Compiler(Publisher, Subscriber):
         verify_function_existence :
         """
         # resolve previous nested objects
-        self._code_generator.object_actions.resolve_function_object()
+        valid_object = self._code_generator.object_actions.resolve_function_object()
 
-        # check if function called by object
-        if len(self._code_generator.object_actions.next_function_object) > 0:
+        if valid_object is not None:
+            # check if function called by object
             # dont remove it yet
             obj = self._code_generator.object_actions.next_function_object[-1]
             # function table context for specific class
@@ -782,11 +782,10 @@ class Compiler(Publisher, Subscriber):
         """
 
         # don't resolve object since its a function
-        self._code_generator.object_actions.set_parse_type(2)
-
         id_ = self._symbol_table.function_table.current_function_call_id_.pop()
-
         type_ = self._symbol_table.function_table.functions[id_].type_
+
+        print('calling op')
 
         if type_ is not ValueType.VOID:
             address = self._allocator.allocate_address(type_, Layers.TEMPORARY)

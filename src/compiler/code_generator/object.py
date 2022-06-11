@@ -28,8 +28,10 @@ class ObjectActions(Publisher):
         self.variable_stack: List[Variable] = []
         self.class_stack = []
         self.object_property_stack = []
+        self.prev_obj_stack = []
         self.object_stack = []
         self.classes = classes
+        self.result_stack = []
         self.count = 0
         self.operand_list = operand_list
         self.quad_list = quad_list
@@ -49,8 +51,11 @@ class ObjectActions(Publisher):
     def set_parse_type(self, parse_type):
         self.parse_type = parse_type
 
+    # used to allocate heap
     def push_variable(self, variable: Variable):
         self.variable_stack.append(variable)
+
+    # push object property to stack
 
     def push_object_property(self, property_name):
         self.object_property_stack.append(property_name)
@@ -59,19 +64,36 @@ class ObjectActions(Publisher):
         self.object_stack.append(variable)
 
     def resolve_function_object(self):
-        self.resolve_objects(True)
-        if len(self.object_stack) == 0:
+        self.resolve_objects()
+        if len(self.result_stack) == 0:
+            print('global function')
             # no object to resolve (global function)
-            return
-        self.next_function_object.append(self.object_stack.pop())
+            return False
+
+        self.resolve_objects()
+        variable = self.result_stack.pop()
+
+        if variable.type_ != ValueType.POINTER:
+            self.broadcast(Event(CompilerEvent.STOP_COMPILE, CompilerError(
+                f'{variable.id_} cannot be used to call functions')))
+
+        print(f'{variable.id_} resolved to {variable.address_} {variable.type_} {variable.class_id}')
+
+        self.pointer_types[variable.address_] = variable.type_
+        if variable.class_id is not None:
+            self.pointer_types[variable.address_] = variable.class_id
+
+        self.next_function_object.append(variable)
+        return True
 
     def resolve(self):
         """resolve objects for assignment or expressions, always returns pointer with location of object param or object itself"""
-        if len(self.object_stack) == 0:
+        if len(self.object_property_stack) == 0:
+            print('no object to resolve')
             return
 
-        self.resolve_objects(is_function_call=False)
-        variable = self.object_stack.pop()
+        self.resolve_objects()
+        variable = self.result_stack.pop()
 
         self.operand_list.append(
             Operand(ValueType.POINTER, variable.address_, class_id=variable.class_id, is_class_param=True))
@@ -80,15 +102,20 @@ class ObjectActions(Publisher):
         if variable.class_id is not None:
             self.pointer_types[variable.address_] = variable.class_id
 
-        self.parse_type = 0
-
-    def resolve_objects(self, is_function_call):
+    def resolve_objects(self):
         count = 0
-        # property_count = len(self.object_property_stack)
 
         while (len(self.object_property_stack) > 0):
-            self.resolve_object_assignment(count, is_function_call)
+            self.resolve_object_assignment(count)
             count += 1
+
+        # can only be one result type, if multiple (object and primitve) raise syntax error
+        if len(self.object_stack) > 0:
+            if len(self.result_stack) > 0:
+                self.broadcast(Event(CompilerEvent.STOP_COMPILE, CompilerError(
+                    f'{self.result_stack[0].id_} only objects can use the . operator')))
+
+            self.result_stack.append(self.object_stack.pop())
 
     def build_quad(self, left, left_pointer_type, result, result_pointer_type, property_data):
         # either * or &
@@ -124,35 +151,51 @@ class ObjectActions(Publisher):
 
         return property_pointer
 
-    def resolve_object_assignment(self, count, is_function_call):
-        variable = self.object_stack.pop(0)
-        class_data = self.classes[variable.class_id]
+    def resolve_object_assignment(self, count):
+        object = self.object_stack.pop(0)
+        print(object.id_, object.type_, object.class_id)
+        class_data = self.classes[object.class_id]
 
         property_id = self.validate_property_exists_in_object(class_data)
         property_data = class_data.variables[property_id]
 
         property_pointer = self.allocate_temporary_result_pointer(property_data)
 
-        if is_function_call:
-            if property_data.type_ in PRIMITIVES:
-                self.broadcast(Event(CompilerEvent.STOP_COMPILE, CompilerError(
-                    f'{property_id} is not a class type')))
-            # always pass reference for function calls
-            quad = self.build_quad(variable.address_, '&', property_pointer, '&', property_data)
-        elif count == 0:
-            quad = self.build_quad(variable.address_, '&', property_pointer, '&', property_data)
-        else:
-            quad = Quad(
-                OperationType.POINTER_ADD,
-                left_address=f'&{variable.address_}',
-                right_address=property_data.offset,
-                result_address=f'&{property_pointer}'
-            )
+        # we simply get the address of the object and push it to the object !queue!
+        if property_data.type_ is ValueType.POINTER and count == 0:
+            quad = self.build_quad(object.address_, '&', property_pointer, '&', property_data)
+            # push it to object stack for further resolving (possibly)
+            self.push_next_object(property_data, property_pointer, quad)
 
-        self.push_next_object(property_data, property_pointer, quad)
+        # in this case we are talking about nested objects so we need to access left addr by value(*)
+        elif property_data.type_ is ValueType.POINTER and count > 0:
+            quad = self.build_quad(object.address_, '*', property_pointer, '&', property_data)
+            self.push_next_object(property_data, property_pointer, quad)
+
+        # in this case we simply want the objects value so left address is & (initial object)
+        elif property_data.type_ in PRIMITIVES and count == 0:
+            quad = self.build_quad(object.address_, '&', property_pointer, '&', property_data)
+            self.push_result_stack(property_data, property_pointer)
+
+        # in this case object is nested, so we need to acces it by value(*)
+        elif property_data.type_ in PRIMITIVES and count > 0:
+            # However we don't push it to the object stack, because we cant resolve primitives
+            quad = self.build_quad(object.address_, '*', property_pointer, '&', property_data)
+            self.push_result_stack(property_data, property_pointer)
+
+        print(f'adding quad quad: {quad.operation}')
+        self.quad_list.append(quad)
+
+    def push_result_stack(self, property_data, property_pointer):
+        "Resolver Result will go here"
+        var = Variable(None)
+        var.address_ = property_pointer
+        var.class_id = property_data.class_id
+        var.type_ = property_data.type_
+
+        self.result_stack.append(var)
 
     def push_next_object(self, property_data, property_pointer, quad):
-        self.quad_list.append(quad)
 
         var = Variable(None)
         var.address_ = property_pointer
