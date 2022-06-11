@@ -73,13 +73,11 @@ class FunctionTable(Publisher, Subscriber):
         from src.compiler.code_generator.array import ArrayEvents
 
         if self.current_function is None:
-            print(
-                f'Received event {event.payload} in class {self.current_class}')
+
             return
 
         if event.type_ is FunctionTableEvents.ADD_TEMP or event.type_ is ArrayEvents.ADD_TEMP:
-            print(
-                f'Received event {event.payload} in class {self.current_class}')
+
             type_, address, class_id = event.payload
             self.__handle_add_temporal(type_, address, class_id)
 
@@ -121,7 +119,6 @@ class FunctionTable(Publisher, Subscriber):
         """ Add Func to `funcs` dictionary if not existent """
 
         if self.functions.get(id_) is None:
-            print(f'Adding function {id_}')
             reference = Function(id_=id_)
             self.functions[id_] = reference
             self.current_function = reference
@@ -212,16 +209,10 @@ class FunctionTable(Publisher, Subscriber):
                     Event(CompilerEvent.STOP_COMPILE,
                           CompilerError(f'Class {type_} not found')))
 
-                print(f'Setting variable  class type {type_}')
-
-            print(f'Setting variable type {type_}')
-
             self.function_data().add_variable_size(ValueType.POINTER, layer)
             self.current_function.set_variable_type(
                 ValueType.POINTER, layer, memory, type_)
             return
-
-        print(f'Setting variable type not class {type_}')
 
         self.function_data().add_variable_size(ValueType(type_), layer)
         id_ = self.current_function.set_variable_type(

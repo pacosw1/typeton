@@ -233,8 +233,6 @@ class VirtualMachine(Subscriber):
                 self.handle_event(
                     Event(RuntimeActions.STOP_RUNTIME, 'NULL pointer exception'))
 
-            print(f'{p_left} + {p_right}')
-
             result = _execute_typed_add(ValueType.INT, p_left, p_right)
             self.__execute_assign(quad.result_address, result)
 

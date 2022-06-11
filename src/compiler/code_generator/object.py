@@ -68,15 +68,13 @@ class ObjectActions(Publisher):
 
     def resolve_function_object(self):
         # check if object is nested so that we can use the (*) operator
-        print(self.object_property_stack)
 
         nested = False
-        if len(self.object_property_stack) == 1:
+        if len(self.object_property_stack) >= 1:
             nested = True
 
         self.resolve_objects()
         if len(self.result_stack) == 0:
-            print('global function')
             # no object to resolve (global function)
             return False
 
@@ -86,8 +84,6 @@ class ObjectActions(Publisher):
         if variable.type_ != ValueType.POINTER:
             self.broadcast(Event(CompilerEvent.STOP_COMPILE, CompilerError(
                 f'{variable.id_} cannot be used to call functions')))
-
-        print(f'{variable.id_} resolved to {variable.address_} {variable.type_} {variable.class_id}')
 
         self.nested_stack.append(nested)
 
@@ -103,7 +99,6 @@ class ObjectActions(Publisher):
 
         self.resolve_objects()
         if len(self.result_stack) == 0:
-            print('cannot resolve')
             return
 
         variable = self.result_stack.pop()
@@ -184,7 +179,6 @@ class ObjectActions(Publisher):
 
     def resolve_object_assignment(self, count):
         object = self.object_stack.pop(0)
-        print(object.id_, object.type_, object.class_id)
         class_data = self.classes[object.class_id]
 
         property_id = self.validate_property_exists_in_object(class_data)
@@ -214,7 +208,6 @@ class ObjectActions(Publisher):
             quad = self.build_quad(object.address_, '*', property_pointer, '&', property_data)
             self.push_result_stack(property_data, property_pointer)
 
-        print(f'adding quad quad: {quad.operation}')
         self.quad_list.append(quad)
 
     def push_result_stack(self, property_data, property_pointer):

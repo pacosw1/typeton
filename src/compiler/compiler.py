@@ -538,16 +538,17 @@ class Compiler(Publisher, Subscriber):
         """
         push_object :
         """
-        self._code_generator.object_actions.set_parse_type(0)
         self.p_push_operator('(')
 
-        print(p[-1], 'pushing_object ')
+        variable = self._symbol_table.function_table.get_variable(p[-1])
 
-        variable = self._symbol_table.function_table.get_variable(
-            p[-1])
-        if variable.class_id is None:
-            self.handle_event(Event(CompilerEvent.STOP_COMPILE, CompilerError(
-                f'Variable {p[-1]} is not an object')))
+        if variable is None or variable.class_id is None:
+            # check previous context if variable not found locally
+            prev_context = self._symbol_table.current_function_table[-2]
+            variable = prev_context.get_variable(p[-1])
+            if variable is None or variable.class_id is None:
+                self.handle_event(Event(CompilerEvent.STOP_COMPILE, CompilerError(
+                    f'Variable {p[-1]} not found in {self._symbol_table.function_table.current_function.id_}')))
 
         self._code_generator.object_actions.property_parent = variable
         self._code_generator.object_actions.push_object(variable)
@@ -602,7 +603,7 @@ class Compiler(Publisher, Subscriber):
         # resolve previous nested objects
         valid_object = self._code_generator.object_actions.resolve_function_object()
 
-        if valid_object is not None:
+        if valid_object:
             # check if function called by object
             # dont remove it yet
             obj = self._code_generator.object_actions.next_function_object[-1]
@@ -662,6 +663,7 @@ class Compiler(Publisher, Subscriber):
             # pop function's object to create a type with that reference
             class_object = self._code_generator.object_actions.next_function_object.pop()
             nested = self._code_generator.object_actions.nested_stack.pop()
+            print(nested)
             self._code_generator.function_actions.add_self_param(class_object, nested)
 
     def p_verify_parameter_signature(self, p):
