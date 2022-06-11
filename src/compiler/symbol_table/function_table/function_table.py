@@ -265,7 +265,6 @@ class FunctionTable(Publisher, Subscriber):
     def end_function(self):
         """ Releases Function From Directory and Virtual Memory"""
         self.__validate_return()
-        print('ending', self.current_function.id_)
 
         self.broadcast(Event(CompilerEvent.GEN_END_FUNC, None))
 

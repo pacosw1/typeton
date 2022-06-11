@@ -40,7 +40,7 @@ func main() -> {
     book.name = "Harry Potter"
     book.age = 10
 
-    delete book
+    // delete book
 
 
 
