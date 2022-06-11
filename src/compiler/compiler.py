@@ -396,7 +396,7 @@ class Compiler(Publisher, Subscriber):
                   | assign
                   | call
                   | return
-                  | constant_object resolve_object
+                  | constant_object
                   | delete_heap_memory
         """
 
@@ -441,6 +441,13 @@ class Compiler(Publisher, Subscriber):
         resolve_object :
         """
         self._code_generator.object_actions.resolve()
+        self.p_push_operator(')')
+
+    def p_resolve_get_object(self, p):
+        """
+        resolve_get_object :
+        """
+        self._code_generator.object_actions.resolve_get()
         self.p_push_operator(')')
 
     def p_other_assing(self, p):
@@ -534,7 +541,7 @@ class Compiler(Publisher, Subscriber):
         self._code_generator.object_actions.set_parse_type(0)
         self.p_push_operator('(')
 
-        print(p[-1])
+        print(p[-1], 'pushing_object ')
 
         variable = self._symbol_table.function_table.get_variable(
             p[-1])
@@ -654,7 +661,8 @@ class Compiler(Publisher, Subscriber):
             print('in class, adding self to function')
             # pop function's object to create a type with that reference
             class_object = self._code_generator.object_actions.next_function_object.pop()
-            self._code_generator.function_actions.add_self_param(class_object)
+            nested = self._code_generator.object_actions.nested_stack.pop()
+            self._code_generator.function_actions.add_self_param(class_object, nested)
 
     def p_verify_parameter_signature(self, p):
         """
@@ -753,7 +761,7 @@ class Compiler(Publisher, Subscriber):
                  | call add_call_operator
                  | call_array 
                  | constant2
-                 | constant_object resolve_object
+                 | constant_object resolve_get_object
         """
         self._code_generator.object_actions.set_parse_type(1)
 

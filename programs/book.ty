@@ -46,41 +46,43 @@ func main() -> {
     book.setName("Harry Potter and the Philosopher's Stone")
     print(book.getName())
 
-    book.setAge(50)
-    print(book.age)
+    book.setAge(50 / book.age)
+    // print(book.age)
 
-    book.sequel = new Book()
-    book.sequel.author = "J.K. Rowling"
-    book.sequel.name = "Harry Potter and the Chamber of Secrets"
-    book.sequel.age = 100
+    // book.sequel = new Book()
+    // book.sequel.author = "J.K. Rowling"
+    // book.sequel.name = "Harry Potter and the Chamber of Secrets"
+    // book.sequel.age = 100
 
     
-    print(book.mult_age(5000))
+    // print(book.mult_age(5000))
 
 
 
-    book.sequel.setAge(100)
-
-    book.sequel.setAuthor("Hello")
-    book.sequel.setName("Paco")
-
-
-    print(book.sequel.getName())
     // print(book.sequel.age + 2 * 3)
 
-    print(book.sequel.getAuthor())
-    print(book.sequel.getName())
+    // var i: Int 
+    // i = book.sequel.age + 2
+
+    // book.sequel.setName("Paco")
 
 
-    // book.sequel.setAge(book.sequel.age + book.age)
-    // // print(book.sequel.age)
+    // print(book.sequel.getAuthor())
+    // print(book.sequel.getName())
+    
+    // book.sequel.setAge(200)
 
-    book.sequel.setAuthor("J.K. Rowling 2")
+    // // print(book.)
+
+
+    // // // print(book.sequel.age)
+
+    // book.sequel.setAuthor("J.K. Rowling 2")
 
     // book.sequel.sequel = new Book()
     
 
-    delete book
+    // delete book
 
     // delete book3
 

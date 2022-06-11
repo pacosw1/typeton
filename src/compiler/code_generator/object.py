@@ -1,3 +1,4 @@
+from this import s
 from typing import List
 from unittest import result
 from weakref import ref
@@ -12,6 +13,7 @@ from src.compiler.symbol_table.class_table import Class
 from src.compiler.symbol_table.function_table.variable_table import variable
 from src.compiler.symbol_table.function_table.variable_table.variable import Variable
 from src.utils.observer import Publisher, Event
+from src.virtual_machine.types import pure_address
 
 """
 Conditional semantic actions
@@ -29,6 +31,7 @@ class ObjectActions(Publisher):
         self.class_stack = []
         self.object_property_stack = []
         self.prev_obj_stack = []
+        self.nested_stack = []
         self.object_stack = []
         self.classes = classes
         self.result_stack = []
@@ -64,6 +67,13 @@ class ObjectActions(Publisher):
         self.object_stack.append(variable)
 
     def resolve_function_object(self):
+        # check if object is nested so that we can use the (*) operator
+        print(self.object_property_stack)
+
+        nested = False
+        if len(self.object_property_stack) == 1:
+            nested = True
+
         self.resolve_objects()
         if len(self.result_stack) == 0:
             print('global function')
@@ -79,6 +89,8 @@ class ObjectActions(Publisher):
 
         print(f'{variable.id_} resolved to {variable.address_} {variable.type_} {variable.class_id}')
 
+        self.nested_stack.append(nested)
+
         self.pointer_types[variable.address_] = variable.type_
         if variable.class_id is not None:
             self.pointer_types[variable.address_] = variable.class_id
@@ -86,10 +98,29 @@ class ObjectActions(Publisher):
         self.next_function_object.append(variable)
         return True
 
+    def resolve_get(self):
+        """resolve get operator"""
+
+        self.resolve_objects()
+        if len(self.result_stack) == 0:
+            print('cannot resolve')
+            return
+
+        variable = self.result_stack.pop()
+
+        if variable.type_ is ValueType.POINTER:
+            self.broadcast(Event(CompilerEvent.STOP_COMPILE, CompilerError(
+                f'can not use pointer types in expressions')))
+
+        address = self.stack_allocator.allocate_address(variable.type_, Layers.TEMPORARY)
+        self.broadcast(Event(FunctionTableEvents.ADD_TEMP, (variable.type_, address, None)))
+
+        self.operand_list.append(
+            Operand(variable.type_, variable.address_, class_id=variable.class_id, is_class_param=True))
+
     def resolve(self):
         """resolve objects for assignment or expressions, always returns pointer with location of object param or object itself"""
         if len(self.object_property_stack) == 0:
-            print('no object to resolve')
             return
 
         self.resolve_objects()
