@@ -211,7 +211,7 @@ class Compiler(Publisher, Subscriber):
     def p_function_return_type(self, p):
         """
         function_return_type : primitive
-                             | 
+                             |
         """
 
     def p_function(self, p):
@@ -283,7 +283,7 @@ class Compiler(Publisher, Subscriber):
 
     def p_param(self, p):
         """
-        param : ID add_param COLON primitive  
+        param : ID add_param COLON primitive
         """
 
     # -- TYPE -----------------------
@@ -402,7 +402,7 @@ class Compiler(Publisher, Subscriber):
 
     def p_delete_heap_memory(self, p):
         """
-        delete_heap_memory : DELETE ID 
+        delete_heap_memory : DELETE ID
         """
         var = self._symbol_table.function_table.get_variable(p[2])
         self._code_generator.object_actions.free_heap_memory(var)
@@ -604,6 +604,7 @@ class Compiler(Publisher, Subscriber):
         valid_object = self._code_generator.object_actions.resolve_function_object()
 
         if valid_object:
+            print("changing to class function")
             # check if function called by object
             # dont remove it yet
             obj = self._code_generator.object_actions.next_function_object[-1]
@@ -619,13 +620,18 @@ class Compiler(Publisher, Subscriber):
         verify_param_count :
         """
 
-        param_count = self._symbol_table.function_table.parameter_count
+        param_count = self._symbol_table.function_table.parameter_count_stack.pop()
+
         signature_len = len(self._symbol_table.function_table.function_data_table[
             self._symbol_table.function_table.current_function_call_id_[-1]].parameter_signature)
+
+        print(signature_len)
 
         if param_count + 1 != signature_len and (signature_len != 0 and param_count == 0):
             self.handle_event(Event(CompilerEvent.STOP_COMPILE, CompilerError(
                 f'Function Call Parameter Mistmatch {param_count} != {signature_len}')))
+
+        print('verified param count')
 
     def p_generate_go_sub(self, p):
         """
@@ -640,6 +646,7 @@ class Compiler(Publisher, Subscriber):
             class_id = current_class.id_
 
         self._code_generator.function_actions.generate_go_sub(id_, class_id)
+        print('gosubing to', id_)
 
         # reset
 
@@ -677,20 +684,22 @@ class Compiler(Publisher, Subscriber):
             self.handle_event(Event(CompilerEvent.STOP_COMPILE, CompilerError(
                 f'Function {func_table.current_function_call_id_[-1]} does not exist in class {func_table.current_class.id_ if func_table.current_class is not None else "global"}')))
 
-        if func_table.parameter_count >= len(current_func.parameter_signature):
+        param_count = func_table.parameter_count_stack[-1]
+
+        if param_count >= len(current_func.parameter_signature):
             self.handle_event(Event(CompilerEvent.STOP_COMPILE, CompilerError(
                 f'Too many parameters for function {func_table.current_function_call_id_}')))
 
-        param_type_ = current_func.parameter_signature[func_table.parameter_count]
+        param_type_ = current_func.parameter_signature[param_count]
         self._code_generator.function_actions.verify_parameter_type(
-            param_type_, func_table.parameter_count)
+            param_type_, param_count)
 
     def p_increment_parameter_count(self, p):
         """
         increment_parameter_count :
         """
         func_table = self._symbol_table.function_table
-        func_table.parameter_count += 1
+        func_table.parameter_count_stack[-1] += 1
 
     # --------------------------------------------------------------------------------
 
@@ -750,7 +759,7 @@ class Compiler(Publisher, Subscriber):
 
     def p_factor(self, p):
         """
-        factor : constant 
+        factor : constant
                | LPAREN push_operator bool_expr RPAREN push_operator
         """
 
@@ -761,7 +770,7 @@ class Compiler(Publisher, Subscriber):
                  | BOOLLIT   add_constant
                  | string
                  | call add_call_operator
-                 | call_array 
+                 | call_array
                  | constant2
                  | constant_object resolve_get_object
         """
@@ -773,6 +782,7 @@ class Compiler(Publisher, Subscriber):
         """
 
         id_ = self._symbol_table.function_table.current_function_call_id_.pop()
+
         type_ = self._symbol_table.function_table.functions[id_].type_
         address = self._allocator.allocate_address(type_, Layers.TEMPORARY)
 
@@ -822,12 +832,6 @@ class Compiler(Publisher, Subscriber):
                         | ID push_object_property
                         | call object_call_operator
         """
-
-    def p_set_resolve_type(self, p):
-        """
-        set_resolve_type :
-        """
-        self._code_generator.object_actions.set_parse_type(2)
 
     def p_push_object_property(self, p):
         """
@@ -1085,7 +1089,7 @@ class Compiler(Publisher, Subscriber):
     # -- ERROR -----------------------
 
     def p_error(self, p):
-        self.display_debug()
+        # self.display_debug()
         error_message = 'Syntax error'
         if p:
 
@@ -1098,6 +1102,7 @@ class Compiler(Publisher, Subscriber):
         else:
             error_message += f': end of file'
             self.syntax_error = error_message
+            print(error_message)
         sys.exit()
 
     def display_debug(self):

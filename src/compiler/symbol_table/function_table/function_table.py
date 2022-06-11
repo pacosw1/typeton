@@ -40,14 +40,14 @@ class FunctionTable(Publisher, Subscriber):
         self.local_hash: Dict[int, Variable] = {}
         self.global_hash: Dict[int, Variable] = {}
 
-        self.current_function_call_id_ = []
-
         self.should_delete_temp = []
         self.function_data_table: Dict[str, FunctionData] = {}
 
         self.current_function: Function = None
 
-        self.parameter_count = 0
+        # call stack
+        self.parameter_count_stack = []
+        self.current_function_call_id_ = []
 
         # We need this for global variable search
         if current_class is None:
@@ -141,7 +141,8 @@ class FunctionTable(Publisher, Subscriber):
 
     def generate_are_memory(self):
         # start counting param signature
-        self.parameter_count = 0
+        self.parameter_count_stack.append(0)
+        print(self.parameter_count_stack)
         return self.current_function_call_id_[-1]
 
     def add_variable(self, id_, is_param):

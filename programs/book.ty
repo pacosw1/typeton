@@ -32,6 +32,11 @@ class Book {
 }
 
 
+func add(x: Int, y: Int) -> Int {
+    return x + y
+}
+
+
 func main() -> {
     var book: Book
 
@@ -42,6 +47,10 @@ func main() -> {
 
     // delete book
 
+
+
+    // print(add(add(add(3,4),add(5,6)),add(7,500)))
+    print("hello world")
 
 
     print(book.getAuthor())
@@ -62,7 +71,7 @@ func main() -> {
 
 
     
-    print(book.mult_age(5000))
+    // print(book.mult_age(add(2,0)))
 
 
 
@@ -112,7 +121,7 @@ func main() -> {
 
     delete book
 
-    // delete book3
+//     // delete book3
 
-    // delete book2
+//     // delete book2
 }
