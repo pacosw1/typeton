@@ -196,8 +196,6 @@ class ContextMemory(Publisher):
         segment = get_segment(argument_address, self.type_data)
         type_data: TypeRange = get_resource(argument_address, segment)
 
-        print("Mapping parameter", argument_address, argument_value, "to", parameter_index)
-
         slot = self.data_storage[type_data.type_]
         slot[parameter_index] = argument_value
 

@@ -348,7 +348,6 @@ class Compiler(Publisher, Subscriber):
         check_function_type :
         """
         if self._symbol_table.function_table.current_function.is_pending_type():
-            print('pending type')
             self._symbol_table.function_table.current_function.set_type(
                 "Void")
 
@@ -542,8 +541,6 @@ class Compiler(Publisher, Subscriber):
         """
         self.p_push_operator('(')
 
-        print(p[-1])
-
         variable = self._symbol_table.function_table.get_variable(p[-1])
 
         if variable is None or variable.class_id is None:
@@ -611,7 +608,6 @@ class Compiler(Publisher, Subscriber):
         in_func = False
 
         if valid_object:
-            print("changing to class function")
             in_func = True
             # check if function called by object
             # dont remove it yet
@@ -626,7 +622,6 @@ class Compiler(Publisher, Subscriber):
 
         while count >= 0:
             prev_func_table = context_stack[count]
-            print('cjecking table', prev_func_table.current_class)
             exists = prev_func_table.verify_function_exists(p[-1])
             if exists is True:
                 good_table = prev_func_table
@@ -658,8 +653,6 @@ class Compiler(Publisher, Subscriber):
         param_signature = curr_func.parameter_signature
 
         signature_len = len(param_signature)
-
-        print(signature_len)
 
         if param_count + 1 != signature_len and (signature_len != 0 and param_count == 0):
             self.handle_event(Event(CompilerEvent.STOP_COMPILE, CompilerError(
@@ -954,6 +947,7 @@ class Compiler(Publisher, Subscriber):
         """
         add_variable :
         """
+        print(p[-1])
         self._symbol_table.function_table.add_variable(
             p[-1], is_param=False)
 

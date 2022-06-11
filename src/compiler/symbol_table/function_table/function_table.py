@@ -35,9 +35,11 @@ class FunctionTable(Publisher, Subscriber):
         self.current_class = current_class
         self.global_ended = False
         self.class_table = class_table
+
         # keep track of them so we don't add repeat numbers to function size
         self.temporal_hash: Dict[int, Variable] = {}
         self.local_hash: Dict[int, Variable] = {}
+        self.local_id_set = {}
         self.global_hash: Dict[int, Variable] = {}
 
         self.should_delete_temp = []
@@ -147,11 +149,16 @@ class FunctionTable(Publisher, Subscriber):
         # print(f'Adding variable {id_}')
         """ Add Var to the current function's vars table """
 
+        if id_ in self.local_id_set:
+            self.broadcast(Event(CompilerEvent.STOP_COMPILE,
+                                 CompilerError(f'Variable {id_} redeclared')))
+
         var = self.current_function.add_variable(id_, is_param)
         if self.current_function.id_ == "global":
             self.global_hash[id_] = var
             return
         self.local_hash[var.address_] = var
+        self.local_id_set[id_] = True
 
     def add_dimension(self, size):
         """ Adds dimension to current array """
@@ -269,6 +276,8 @@ class FunctionTable(Publisher, Subscriber):
 
         self.broadcast(Event(CompilerEvent.FREE_MEMORY, None))
         self.temporal_hash = {}
+        self.local_hash = {}
+        self.local_id_set = {}
 
     def current_trace(self):
         if self.current_function:
