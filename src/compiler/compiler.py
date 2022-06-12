@@ -1,3 +1,4 @@
+from cmath import inf
 from distutils.errors import CompileError
 import sys
 
@@ -5,6 +6,7 @@ import jsonpickle
 
 from src.compiler.code_generator.code_generator import CodeGenerator
 from src.compiler.code_generator.expression import PRIMITIVES
+from src.compiler.code_generator.function import FunctionCallData
 from src.compiler.code_generator.type import Dimension, FunctionTableEvents, Operand, OperationType, Quad
 from src.compiler.errors import CompilerError, CompilerEvent
 from src.compiler.lexer import lex, tokens
@@ -211,7 +213,7 @@ class Compiler(Publisher, Subscriber):
     def p_function_return_type(self, p):
         """
         function_return_type : primitive
-                             | 
+                             |
         """
 
     def p_function(self, p):
@@ -252,7 +254,7 @@ class Compiler(Publisher, Subscriber):
         """
         set_class_object_type :
         """
-        class_data = self._symbol_table.class_table.classes[p[-1]]
+        class_data = self._symbol_table.class_table.classes.get(p[-1])
         if class_data is None:
             self.handle_event(Event(CompilerEvent.STOP_COMPILE,
                               CompilerError("Class '" + p[-1] + "' not found")))
@@ -283,7 +285,7 @@ class Compiler(Publisher, Subscriber):
 
     def p_param(self, p):
         """
-        param : ID add_param COLON primitive  
+        param : ID add_param COLON primitive
         """
 
     # -- TYPE -----------------------
@@ -346,7 +348,6 @@ class Compiler(Publisher, Subscriber):
         check_function_type :
         """
         if self._symbol_table.function_table.current_function.is_pending_type():
-            print('pending type')
             self._symbol_table.function_table.current_function.set_type(
                 "Void")
 
@@ -402,7 +403,7 @@ class Compiler(Publisher, Subscriber):
 
     def p_delete_heap_memory(self, p):
         """
-        delete_heap_memory : DELETE ID 
+        delete_heap_memory : DELETE ID
         """
         var = self._symbol_table.function_table.get_variable(p[2])
         self._code_generator.object_actions.free_heap_memory(var)
@@ -602,6 +603,7 @@ class Compiler(Publisher, Subscriber):
         """
         # resolve previous nested objects
         valid_object = self._code_generator.object_actions.resolve_function_object()
+        good_table = None
 
         if valid_object:
             # check if function called by object
@@ -612,34 +614,60 @@ class Compiler(Publisher, Subscriber):
             self._symbol_table.set_class_functions(obj.class_id)
             # self.init_current_function_table()
 
-        self._symbol_table.function_table.verify_function_exists(p[-1])
+        context_stack = self._symbol_table.current_function_table
+        count = len(context_stack) - 1
+
+        while count >= 0:
+            prev_func_table = context_stack[count]
+            exists = prev_func_table.verify_function_exists(p[-1])
+            if exists is True:
+                good_table = prev_func_table
+                break
+
+            count -= 1
+
+        if exists is False:
+            self.handle_event(Event(
+                CompilerEvent.STOP_COMPILE,
+                CompilerError(f'Invalid Function Call: Function with name {p[-1]} does not exist')))
+
+        func_call = FunctionCallData(p[-1])
+        func_call.current_class = good_table.current_class
+        func_call.parameter_signature = good_table.function_data_table[p[-1]].parameter_signature
+        func_call.type_ = good_table.function_data_table[p[-1]].type_
+
+        self._code_generator.function_actions.function_call_stack.append(func_call)
 
     def p_verify_param_count(self, p):
         """
         verify_param_count :
         """
+        curr_func: FunctionCallData = self._code_generator.function_actions.function_call_stack[-1]
+        param_count = curr_func.parameter_count
+        param_signature = curr_func.parameter_signature
 
-        param_count = self._symbol_table.function_table.parameter_count
-        signature_len = len(self._symbol_table.function_table.function_data_table[
-            self._symbol_table.function_table.current_function_call_id_[-1]].parameter_signature)
+        signature_len = len(param_signature)
 
         if param_count + 1 != signature_len and (signature_len != 0 and param_count == 0):
             self.handle_event(Event(CompilerEvent.STOP_COMPILE, CompilerError(
                 f'Function Call Parameter Mistmatch {param_count} != {signature_len}')))
+
+        print('verified param count')
 
     def p_generate_go_sub(self, p):
         """
         generate_go_sub :
         """
         # TODO move to function table
-        id_ = self._symbol_table.function_table.current_function_call_id_[-1]
-        current_class = self._symbol_table.function_table.current_class
+        curr_func: FunctionCallData = self._code_generator.function_actions.function_call_stack[-1]
+        current_class = curr_func.current_class
 
         class_id = 'global'
         if current_class is not None:
             class_id = current_class.id_
 
-        self._code_generator.function_actions.generate_go_sub(id_, class_id)
+        self._code_generator.function_actions.generate_go_sub(curr_func.call_id, class_id)
+        print('gosubing to', curr_func.call_id)
 
         # reset
 
@@ -648,49 +676,52 @@ class Compiler(Publisher, Subscriber):
         gen_are_memory :
         """
 
-        func_id = self._symbol_table.function_table.generate_are_memory()
+        # func_id = self._symbol_table.function_table.generate_are_memory()
         self.p_push_operator('(')
         # if in class at self param
 
-        if self._symbol_table.in_class:
-            self._code_generator.function_actions.generate_are(func_id, self._symbol_table.function_table.current_class.id_)
-        else:
-            self._code_generator.function_actions.generate_are(func_id)
+        curr_func = self._code_generator.function_actions.function_call_stack[-1]
+        class_id = "global"
+        if curr_func.current_class is not None:
+            class_id = curr_func.current_class.id_
+
+        self._code_generator.function_actions.generate_are(curr_func.call_id, class_id)
 
         # Generate invisible self parameter if class function call
-        if self._symbol_table.in_class:
+        if self._symbol_table.function_table.current_class is not None:
             print('in class, adding self to function')
             # pop function's object to create a type with that reference
-            class_object = self._code_generator.object_actions.next_function_object.pop()
-            nested = self._code_generator.object_actions.nested_stack.pop()
-            print(nested)
-            self._code_generator.function_actions.add_self_param(class_object, nested)
+
+            class_object_stack = self._code_generator.object_actions.next_function_object
+            if len(class_object_stack) > 0:
+                class_object = class_object_stack.pop()
+                nested = self._code_generator.object_actions.nested_stack.pop()
+                print(nested)
+                self._code_generator.function_actions.add_self_param(class_object, nested)
+        # look in all previous contexts
 
     def p_verify_parameter_signature(self, p):
         """
         verify_parameter_signature :
         """
         # Todo add this into function directory
-        func_table = self._symbol_table.function_table
-        current_func = func_table.function_data_table.get(func_table.current_function_call_id_[-1])
-        if current_func is None:
-            self.handle_event(Event(CompilerEvent.STOP_COMPILE, CompilerError(
-                f'Function {func_table.current_function_call_id_[-1]} does not exist in class {func_table.current_class.id_ if func_table.current_class is not None else "global"}')))
+        current_func: FunctionCallData = self._code_generator.function_actions.function_call_stack[-1]
+        param_count = current_func.parameter_count
 
-        if func_table.parameter_count >= len(current_func.parameter_signature):
+        if param_count >= len(current_func.parameter_signature):
             self.handle_event(Event(CompilerEvent.STOP_COMPILE, CompilerError(
-                f'Too many parameters for function {func_table.current_function_call_id_}')))
+                f'Too many parameters for function {current_func.call_id}')))
 
-        param_type_ = current_func.parameter_signature[func_table.parameter_count]
+        param_type_ = current_func.parameter_signature[param_count]
         self._code_generator.function_actions.verify_parameter_type(
-            param_type_, func_table.parameter_count)
+            param_type_, param_count)
 
     def p_increment_parameter_count(self, p):
         """
         increment_parameter_count :
         """
-        func_table = self._symbol_table.function_table
-        func_table.parameter_count += 1
+        current_func: FunctionCallData = self._code_generator.function_actions.function_call_stack[-1]
+        current_func.parameter_count += 1
 
     # --------------------------------------------------------------------------------
 
@@ -750,7 +781,7 @@ class Compiler(Publisher, Subscriber):
 
     def p_factor(self, p):
         """
-        factor : constant 
+        factor : constant
                | LPAREN push_operator bool_expr RPAREN push_operator
         """
 
@@ -761,7 +792,7 @@ class Compiler(Publisher, Subscriber):
                  | BOOLLIT   add_constant
                  | string
                  | call add_call_operator
-                 | call_array 
+                 | call_array
                  | constant2
                  | constant_object resolve_get_object
         """
@@ -772,8 +803,9 @@ class Compiler(Publisher, Subscriber):
         add_call_operator :
         """
 
-        id_ = self._symbol_table.function_table.current_function_call_id_.pop()
-        type_ = self._symbol_table.function_table.functions[id_].type_
+        curr_func = self._code_generator.function_actions.function_call_stack.pop()
+
+        type_ = curr_func.type_
         address = self._allocator.allocate_address(type_, Layers.TEMPORARY)
 
         self.broadcast(
@@ -792,18 +824,17 @@ class Compiler(Publisher, Subscriber):
         """
 
         # don't resolve object since its a function
-        id_ = self._symbol_table.function_table.current_function_call_id_.pop()
-        type_ = self._symbol_table.function_table.functions[id_].type_
+        curr_func: FunctionCallData = self._code_generator.function_actions.function_call_stack.pop()
 
         print('calling op')
 
-        if type_ is not ValueType.VOID:
-            address = self._allocator.allocate_address(type_, Layers.TEMPORARY)
+        if curr_func.type_ is not ValueType.VOID:
+            address = self._allocator.allocate_address(curr_func.type_, Layers.TEMPORARY)
 
             self.broadcast(
-                Event(FunctionTableEvents.ADD_TEMP, (type_, address, None)))
+                Event(FunctionTableEvents.ADD_TEMP, (curr_func.type_, address, None)))
 
-            self._code_generator.expression_actions.add_call_assign(address, type_)
+            self._code_generator.expression_actions.add_call_assign(address, curr_func.type_)
         self.p_push_operator(')')  # for function call
 
         # change back to global context
@@ -822,12 +853,6 @@ class Compiler(Publisher, Subscriber):
                         | ID push_object_property
                         | call object_call_operator
         """
-
-    def p_set_resolve_type(self, p):
-        """
-        set_resolve_type :
-        """
-        self._code_generator.object_actions.set_parse_type(2)
 
     def p_push_object_property(self, p):
         """
@@ -916,6 +941,7 @@ class Compiler(Publisher, Subscriber):
         """
         add_variable :
         """
+        print(p[-1])
         self._symbol_table.function_table.add_variable(
             p[-1], is_param=False)
 
@@ -1037,7 +1063,9 @@ class Compiler(Publisher, Subscriber):
         push_variable :
         """
         variable = self._symbol_table.function_table.get_variable(
-            p[-1])
+            p[-1], self._symbol_table.current_function_table)
+
+        print(p[-1])
         self._code_generator.push_variable(
             p[-1], variable.type_, variable.address_, variable.class_id)
 
@@ -1085,7 +1113,7 @@ class Compiler(Publisher, Subscriber):
     # -- ERROR -----------------------
 
     def p_error(self, p):
-        self.display_debug()
+        # self.display_debug()
         error_message = 'Syntax error'
         if p:
 
@@ -1098,6 +1126,7 @@ class Compiler(Publisher, Subscriber):
         else:
             error_message += f': end of file'
             self.syntax_error = error_message
+            print(error_message)
         sys.exit()
 
     def display_debug(self):

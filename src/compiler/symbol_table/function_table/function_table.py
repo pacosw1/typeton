@@ -35,19 +35,21 @@ class FunctionTable(Publisher, Subscriber):
         self.current_class = current_class
         self.global_ended = False
         self.class_table = class_table
+
         # keep track of them so we don't add repeat numbers to function size
         self.temporal_hash: Dict[int, Variable] = {}
         self.local_hash: Dict[int, Variable] = {}
+        self.local_id_set = {}
         self.global_hash: Dict[int, Variable] = {}
-
-        self.current_function_call_id_ = []
 
         self.should_delete_temp = []
         self.function_data_table: Dict[str, FunctionData] = {}
 
         self.current_function: Function = None
 
-        self.parameter_count = 0
+        # call stack
+        self.parameter_count_stack = []
+        self.current_function_call_id_ = []
 
         # We need this for global variable search
         if current_class is None:
@@ -134,25 +136,30 @@ class FunctionTable(Publisher, Subscriber):
 
     def verify_function_exists(self, id_):
         if self.functions.get(id_) is None:
-            self.broadcast(Event(
-                CompilerEvent.STOP_COMPILE,
-                CompilerError(f'Invalid Function Call: Function with name {id_} does not exist inside {self.current_class.id_ if self.current_class is not None else "global"}')))
-        self.current_function_call_id_.append(id_)
+            return False
+
+        return True
 
     def generate_are_memory(self):
         # start counting param signature
-        self.parameter_count = 0
+        self.parameter_count_stack.append(0)
+        print(self.parameter_count_stack)
         return self.current_function_call_id_[-1]
 
     def add_variable(self, id_, is_param):
         # print(f'Adding variable {id_}')
         """ Add Var to the current function's vars table """
 
+        if id_ in self.local_id_set:
+            self.broadcast(Event(CompilerEvent.STOP_COMPILE,
+                                 CompilerError(f'Variable {id_} redeclared')))
+
         var = self.current_function.add_variable(id_, is_param)
         if self.current_function.id_ == "global":
             self.global_hash[id_] = var
             return
         self.local_hash[var.address_] = var
+        self.local_id_set[id_] = True
 
     def add_dimension(self, size):
         """ Adds dimension to current array """
@@ -265,18 +272,19 @@ class FunctionTable(Publisher, Subscriber):
     def end_function(self):
         """ Releases Function From Directory and Virtual Memory"""
         self.__validate_return()
-        print('ending', self.current_function.id_)
 
         self.broadcast(Event(CompilerEvent.GEN_END_FUNC, None))
 
         self.broadcast(Event(CompilerEvent.FREE_MEMORY, None))
         self.temporal_hash = {}
+        self.local_hash = {}
+        self.local_id_set = {}
 
     def current_trace(self):
         if self.current_function:
             return self.current_class.id_ if self.current_class else self.current_function.id_
 
-    def get_variable(self, id_):
+    def get_variable(self, id_, table_stack=[]):
         # Try to find local first
         variable_table = self.current_function.variables
         if variable_table.get(id_) is not None:
@@ -287,6 +295,16 @@ class FunctionTable(Publisher, Subscriber):
             variable_table = self.functions["global"].variables
             if variable_table.get(id_) is not None:
                 return variable_table[id_]
+
+        count = len(table_stack) - 1
+
+        # check previous contexts
+        while count >= 0:
+            func_table = table_stack[count]
+            variable_table = func_table.current_function.variables
+            if variable_table.get(id_) is not None:
+                return variable_table[id_]
+            count -= 1
 
         # Could not find
         self.broadcast(Event(CompilerEvent.STOP_COMPILE,

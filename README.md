@@ -23,6 +23,8 @@ To Execute Specific Files: `python3 -m src.{directory}.{fileName}`
 
 To run the syntax highlighter (only for vscode) head to `typeton-lange/` and hit F5 on windows or FN+F5 on mac. A new window should pop up with the syntax highlighter extension running locally
 
+To run the compliler, add or use a file in `programs/` and run `python3 -m src.main`
+
 ---
 
 **Start**

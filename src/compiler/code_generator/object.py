@@ -96,22 +96,31 @@ class ObjectActions(Publisher):
 
     def resolve_get(self):
         """resolve get operator"""
+        print('resolving get')
 
         self.resolve_objects()
         if len(self.result_stack) == 0:
+            print('no result')
             return
 
         variable = self.result_stack.pop()
 
+        print('variable', variable.type_)
+
         if variable.type_ is ValueType.POINTER:
+            print('should not run')
             self.broadcast(Event(CompilerEvent.STOP_COMPILE, CompilerError(
                 f'can not use pointer types in expressions')))
 
         address = self.stack_allocator.allocate_address(variable.type_, Layers.TEMPORARY)
-        self.broadcast(Event(FunctionTableEvents.ADD_TEMP, (variable.type_, address, None)))
+        self.broadcast(Event(FunctionTableEvents.ADD_TEMP, (variable.type_, address, variable.class_id)))
+
+        # assign value to pointer
+        self.quad_list.append(Quad(OperationType.ASSIGN, f'*{variable.address_}', result_address=address))
 
         self.operand_list.append(
-            Operand(variable.type_, variable.address_, class_id=variable.class_id, is_class_param=True))
+            Operand(variable.type_, address, class_id=variable.class_id, is_class_param=True))
+        print(self.operand_list[-1].type_)
 
     def resolve(self):
         """resolve objects for assignment or expressions, always returns pointer with location of object param or object itself"""
@@ -120,6 +129,8 @@ class ObjectActions(Publisher):
 
         self.resolve_objects()
         variable = self.result_stack.pop()
+
+        print('resolving to pointer', variable.address_)
 
         self.operand_list.append(
             Operand(ValueType.POINTER, variable.address_, class_id=variable.class_id, is_class_param=True))

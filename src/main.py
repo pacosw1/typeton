@@ -3,7 +3,8 @@ from src.virtual_machine import VirtualMachine
 import os
 from src.config.definitions import PROGRAMS_DIR
 
-FILENAME = 'book.ty'
+print("\n\n\n")
+FILENAME = input("enter a file to run from the programs directory:  ex. book.ty \n")
 
 
 def main():
