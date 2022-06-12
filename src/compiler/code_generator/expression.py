@@ -325,7 +325,14 @@ class ExpressionActions(Publisher, Subscriber):
         return_expression = self.next_operand()
 
         if return_expression.type_ is ValueType.POINTER:
-            return_expression.type_ = self.pointer_types[return_expression.address]
+            return_expression.type_ = self.pointer_types.get(return_expression.address)
+            if return_expression.type_ is None:
+                self.broadcast(
+                    Event(
+                        CompilerEvent.STOP_COMPILE,
+                        CompilerError(f'Cannot return a pointer')
+                    )
+                )
 
         if return_expression.type_ is not type_:
             self.broadcast(Event(CompilerEvent.STOP_COMPILE, CompilerError(

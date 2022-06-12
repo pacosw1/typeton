@@ -24,7 +24,7 @@ class Builtin_Function_Actions(Publisher):
 
     def execute_print(self, operator, operands):
         if len(operands) == 0:
-            self.broadcast(Event(CompilerEvent.STOP_COMPILE, CompilerError(f'variable is not initialized')))
+            self.broadcast(Event(CompilerEvent.STOP_COMPILE, CompilerError(f'variable is not initialized, nothing to print')))
         expression: Operand = operands.pop()
 
         quad = Quad(operation=operator.type_.value, result_address=expression.address)

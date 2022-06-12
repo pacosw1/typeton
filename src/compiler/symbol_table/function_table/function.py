@@ -44,7 +44,6 @@ class Function:
         return self._pending_type
 
     def set_type(self, type_):
-        print('set_type')
         self._pending_type = False
         self.type_: ValueType = ValueType(type_)
 
