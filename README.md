@@ -15,7 +15,13 @@ An object oriented language developed by two rockstar engineering students at Te
 
 ## 🚗 GETTING STARTED
 
-To install dependencies simply run `pip install .`
+This project requires pip and json-pickle.
+
+If you don't have pip make sure to download it before continuing.
+
+Windows: https://www.liquidweb.com/kb/install-pip-windows/ Mac: https://phoenixnap.com/kb/install-pip-mac
+
+To install dependencies simply run `pip install . or pip3 install .`
 
 To run the compiler simply execute `python3 -m src.main`
 
