@@ -167,21 +167,21 @@ func main() {
   - [x] Variable tables
   - [x] Semantics cube
   - [x] Heap Allocator
-- [ ] 🏭 Code generation
+- [x] 🏭 Code generation
   - [x] Arithmetic expressions
   - [x] Short Hand Assignments (+=, -=, \*=, /=)
   - [x] Sequential blocks (ASSIGN, INPUT, ETC.)
   - [x] Conditional blocks (IF, ELSE, WHILE, WHILE)
   - [x] Functions
-  - [ ] Arrays
-  - [ ] Classes
-  - [ ] Objects
+  - [x] Arrays
+  - [x] Classes
+  - [x] Objects
 - [x] 🖥 Virtual Machine
   - [x] Memory for execution (Global memory, temporal memory, execution stack)
   - [x] Arithmetic expressions execution
   - [x] Sequential blocks execution
   - [x] Conditional blocks execution
-- [ ] 🏁 Documentation review
+- [x] 🏁 Documentation review
 
 ## 🔍 SYNTAX DIAGRAM
 
