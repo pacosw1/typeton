@@ -1,5 +1,0 @@
-var a: Int = 2 + 5
-
-func main() -> Void {
-    var b: Float = 2.5 + 2
-}

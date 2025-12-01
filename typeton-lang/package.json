@@ -1,25 +1,10 @@
 {
     "name": "typeton-lang",
-    "displayName": "typeton",
-    "description": "extension for own language",
+    "displayName": "Typeton Language Placeholder",
+    "publisher": "typeton",
+    "description": "Placeholder language package so VS Code can read package metadata.",
     "version": "0.0.1",
     "engines": {
-        "vscode": "^1.67.0"
-    },
-    "categories": [
-        "Programming Languages"
-    ],
-    "contributes": {
-        "languages": [{
-            "id": "typeton",
-            "aliases": ["typeton", "typeton"],
-            "extensions": [".ty"],
-            "configuration": "./language-configuration.json"
-        }],
-        "grammars": [{
-            "language": "typeton",
-            "scopeName": "source.typeton",
-            "path": "./syntaxes/typeton.tmLanguage.json"
-        }]
+        "vscode": "^1.50.0"
     }
 }

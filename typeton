@@ -1,0 +1,844 @@
+#!/usr/bin/env bun
+
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
+import { Buffer } from 'buffer';
+import { execSync, spawnSync } from 'child_process';
+import { compileFile, Quad } from './compiler/src/index.ts';
+
+const DEBUG_FLAGS = new Set(['--debug', '-d']);
+const RUN_COMMAND = 'run';
+const COMPILE_COMMAND = 'compile';
+const ENCODER_AXIS_NAMES = ['x', 'y', 'z'];
+const ENCODER_PROPERTY_NAMES = ['angle', 'counts'];
+const ENCODER_METHOD_NAMES = [
+    'waitForAngle',
+    'waitForCounts',
+    'jog',
+    'moveAbsolute',
+    'setGearMaster',
+    'setGearRatio',
+    'setGearBlend'
+];
+const MAX_INPUT_CHANNELS = 16;
+
+const rawArgs = process.argv.slice(2);
+let debugMode = false;
+const args: string[] = [];
+
+for (const arg of rawArgs) {
+    if (DEBUG_FLAGS.has(arg)) {
+        debugMode = true;
+        continue;
+    }
+    args.push(arg);
+}
+
+function showUsage() {
+    console.log('Typeton Compiler v0.1.0');
+    console.log('Usage: typeton [--debug] <file.ty>');
+    console.log('       typeton [--debug] run <file.ty>');
+    console.log('       typeton [--debug] compile <file.ty>');
+    console.log('  --debug / -d    Show runtime performance stats after execution');
+}
+
+if (args.length === 0) {
+    showUsage();
+    process.exit(1);
+}
+
+let command = RUN_COMMAND;
+let filename = '';
+
+if (args.length === 1) {
+    filename = args[0];
+} else if (args.length === 2 && [RUN_COMMAND, COMPILE_COMMAND].includes(args[0])) {
+    command = args[0];
+    filename = args[1];
+} else {
+    showUsage();
+    process.exit(1);
+}
+
+if (!fs.existsSync(filename)) {
+    console.error(`Error: File '${filename}' not found`);
+    process.exit(1);
+}
+
+if (!filename.endsWith('.ty')) {
+    console.error('Error: File must have .ty extension');
+    process.exit(1);
+}
+
+const scriptDir = path.dirname(new URL(import.meta.url).pathname);
+const resolvedPath = path.resolve(filename);
+const sourceFileSizeBytes = fs.statSync(resolvedPath).size;
+
+interface RunStats {
+    instructions: number;
+    programSizeBytes: number;
+    durationMicroseconds: number;
+    operationCounts: Map<string, number>;
+    printDurationMicroseconds?: number;
+    sourceFileSizeBytes?: number;
+    runtimeMemorySnapshot?: RuntimeWatchdogSnapshot;
+}
+
+interface RuntimeWatchdogSnapshot {
+    heapStartBytes: number;
+    heapPeakBytes: number;
+    heapEndBytes: number;
+}
+
+interface InputRuntimeState {
+    activeLow: Map<number, boolean>;
+}
+
+console.log(`📝 Compiling ${filename}...`);
+
+try {
+    const quads = compileFile(resolvedPath);
+
+    console.log('Generated Quads:');
+    quads.forEach((quad, index) => {
+        console.log(`${index}: (${quad.op}, ${quad.left}, ${quad.right}, ${quad.res})`);
+    });
+
+    if (command === COMPILE_COMMAND) {
+        const quadPath = writeQuadFile(quads, resolvedPath);
+        console.log(`✅ Quads written to ${quadPath}`);
+        process.exit(0);
+    }
+
+    console.log('🚀 Running on embedded runtime...\n');
+
+    const runtimeFile = dumpQuadsForCRuntime(quads);
+    try {
+        const runner = ensureCRuntime(scriptDir);
+        const runResult = spawnSync(runner, [runtimeFile], { stdio: 'inherit' });
+        if (runResult.error) {
+            throw runResult.error;
+        }
+        if (runResult.status !== 0) {
+            throw new Error(`C runtime exited with code ${runResult.status}`);
+        }
+    } finally {
+        fs.rmSync(runtimeFile, { force: true });
+    }
+
+} catch (error) {
+    console.error('❌ Compilation failed:');
+    console.error(error instanceof Error ? error.message : error);
+    process.exit(1);
+}
+
+function executeQuad(
+    quad: Quad,
+    memory: Map<number, number | string | boolean>,
+    output: string[],
+    inputState: InputRuntimeState,
+    functionState: { callStack: number[] },
+    ip: number
+): number | undefined {
+    switch (quad.op) {
+    case '=': {
+        const target = resolveTargetAddress(quad.res, memory);
+        const value = resolveOperand(quad.left, memory);
+        memory.set(target, value);
+        return;
+    }
+
+    case 'ADD_I32':
+    case 'SUB_I32':
+    case 'MUL_I32':
+    case 'DIV_I32':
+    case 'MOD_I32':
+        handleArithmetic(quad, memory);
+        return;
+
+    case 'OP_LESS_THAN':
+    case 'OP_GREAT_THAN':
+    case 'OP_LESS_EQUAL':
+    case 'OP_GREAT_EQUAL':
+    case 'OP_EQUAL':
+    case 'OP_NOT_EQUAL':
+    case 'OP_AND':
+    case 'OP_OR':
+        handleComparison(quad, memory);
+        return;
+
+    case 'SIN_DEG':
+    case 'COS_DEG':
+    case 'TAN_DEG':
+    case 'ABS':
+    case 'SQRT':
+    case 'ATAN2':
+    case 'FLOOR':
+    case 'CEIL':
+    case 'MIN':
+    case 'MAX':
+        handleMathFunc(quad, memory);
+        return;
+
+    case 'PRINT':
+        output.push(String(resolveOperand(quad.left, memory)));
+        return;
+
+    case 'GET_ENCODER':
+        handleGetEncoder(quad, memory);
+        return;
+
+    case 'CALL_ENCODER_METHOD':
+        handleEncoderMethod(quad, memory);
+        return;
+
+    case 'WAIT_FOR_ANGLE':
+        handleMotionCommand(quad, memory, 'waitForAngle');
+        return;
+
+    case 'WAIT_FOR_COUNTS':
+        handleMotionCommand(quad, memory, 'waitForCounts');
+        return;
+
+    case 'JOG':
+        handleMotionCommand(quad, memory, 'jog');
+        return;
+
+    case 'MOVE_ABS':
+    case 'MOVE_ABSOLUTE':
+        handleMotionCommand(quad, memory, 'moveAbsolute');
+        return;
+
+    case 'SET_GEAR_MASTER':
+        handleMotionCommand(quad, memory, 'setGearMaster');
+        return;
+
+    case 'SET_GEAR_RATIO':
+        handleMotionCommand(quad, memory, 'setGearRatio');
+        return;
+
+    case 'SET_GEAR_BLEND':
+        handleSetGearBlend(quad, memory);
+        return;
+
+    case 'SET_INPUT_TYPE':
+        handleSetInputType(quad, memory, inputState);
+        return;
+
+    case 'READ_INPUT':
+        handleReadInput(quad, memory, inputState);
+        return;
+
+    case 'GOTO':
+        return toNumber(quad.res);
+
+    case 'GOTOF':
+        if (!isTruthy(resolveOperand(quad.left, memory))) {
+            return toNumber(quad.res);
+        }
+        return;
+
+    case 'GOTOV':
+        if (isTruthy(resolveOperand(quad.left, memory))) {
+            return toNumber(quad.res);
+        }
+        return;
+
+    case 'ERA':
+        return;
+
+    case 'PARAM': {
+        const target = resolveTargetAddress(quad.res, memory);
+        const value = resolveOperand(quad.left, memory);
+        memory.set(target, value);
+        return;
+    }
+
+    case 'GOSUB': {
+        const targetIp = toNumber(resolveOperand(quad.left, memory));
+        functionState.callStack.push(ip + 1);
+        return targetIp;
+    }
+
+    case 'RETURN':
+    case 'ENDFUNC':
+        if (functionState.callStack.length === 0) {
+            return -1;
+        }
+        return functionState.callStack.pop();
+
+    case 'DEREF': {
+        const slotAddress = toNumber(resolveOperand(quad.left, memory));
+        const pointerValue = Number(memory.get(slotAddress) ?? 0);
+        memory.set(resolveTargetAddress(quad.res, memory), pointerValue);
+        return;
+    }
+
+    default:
+        return;
+    }
+}
+
+function handleArithmetic(quad: Quad, memory: Map<number, number | string | boolean>) {
+    const left = toNumber(resolveOperand(quad.left, memory));
+    const right = toNumber(resolveOperand(quad.right, memory));
+    let result = 0;
+
+    switch (quad.op) {
+        case 'ADD_I32':
+            result = left + right;
+            break;
+        case 'SUB_I32':
+            result = left - right;
+            break;
+        case 'MUL_I32':
+            result = left * right;
+            break;
+        case 'DIV_I32':
+            result = right !== 0 ? Math.trunc(left / right) : 0;
+            break;
+        case 'MOD_I32':
+            result = right !== 0 ? left % right : 0;
+            break;
+    }
+
+    memory.set(resolveTargetAddress(quad.res, memory), result);
+}
+
+function handleMathFunc(quad: Quad, memory: Map<number, number | string | boolean>) {
+    const left = toNumber(resolveOperand(quad.left, memory));
+    const right = toNumber(resolveOperand(quad.right, memory));
+    let result = 0;
+    const radians = left * Math.PI / 180;
+
+    switch (quad.op) {
+        case 'SIN_DEG':
+            result = Math.sin(radians);
+            break;
+        case 'COS_DEG':
+            result = Math.cos(radians);
+            break;
+        case 'TAN_DEG':
+            result = Math.tan(radians);
+            break;
+        case 'ABS':
+            result = Math.abs(left);
+            break;
+        case 'SQRT':
+            result = Math.sqrt(Math.max(left, 0));
+            break;
+        case 'ATAN2':
+            result = Math.atan2(left, right) * 180 / Math.PI;
+            break;
+        case 'MIN':
+            result = Math.min(left, right);
+            break;
+        case 'MAX':
+            result = Math.max(left, right);
+            break;
+    case 'FLOOR':
+        result = Math.floor(left);
+        break;
+    case 'CEIL':
+        result = Math.ceil(left);
+        break;
+    case 'ROUND':
+        result = Math.round(left);
+        break;
+    }
+
+    memory.set(resolveTargetAddress(quad.res, memory), result);
+}
+
+function handleComparison(quad: Quad, memory: Map<number, number | string | boolean>) {
+    const left = toNumber(resolveOperand(quad.left, memory));
+    const right = toNumber(resolveOperand(quad.right, memory));
+    let result = 0;
+
+    switch (quad.op) {
+        case 'OP_LESS_THAN':
+            result = left < right ? 1 : 0;
+            break;
+        case 'OP_GREAT_THAN':
+            result = left > right ? 1 : 0;
+            break;
+        case 'OP_LESS_EQUAL':
+            result = left <= right ? 1 : 0;
+            break;
+        case 'OP_GREAT_EQUAL':
+            result = left >= right ? 1 : 0;
+            break;
+        case 'OP_EQUAL':
+            result = left === right ? 1 : 0;
+            break;
+        case 'OP_NOT_EQUAL':
+            result = left !== right ? 1 : 0;
+            break;
+        case 'OP_AND':
+            result = (left !== 0 && right !== 0) ? 1 : 0;
+            break;
+        case 'OP_OR':
+            result = (left !== 0 || right !== 0) ? 1 : 0;
+            break;
+    }
+
+    memory.set(resolveTargetAddress(quad.res, memory), result);
+}
+
+function handleGetEncoder(quad: Quad, memory: Map<number, number | string | boolean>) {
+    const axis = toNumber(quad.left);
+    const propertyCode = normalizePropertyIndex(toNumber(quad.right));
+    const value = readEncoderAxisProperty(axis, propertyCode);
+    memory.set(resolveTargetAddress(quad.res, memory), value);
+}
+
+function handleEncoderMethod(quad: Quad, memory: Map<number, number | string | boolean>) {
+    const packedAxis = toNumber(quad.left);
+    const axis = normalizeAxisIndex(packedAxis & 0xff);
+    const blendAxis = normalizeAxisIndex((packedAxis >> 8) & 0xff);
+    const methodCode = normalizeMethodCode(toNumber(quad.res));
+    const argument = toNumber(resolveOperand(quad.right, memory));
+    const extra =
+        ENCODER_METHOD_NAMES[methodCode] === 'setGearBlend'
+            ? (blendAxis === axis ? 1 : 0)
+            : 0;
+    executeEncoderMethod(axis, methodCode, argument, extra);
+}
+
+function handleMotionCommand(quad: Quad, memory: Map<number, number | string | boolean>, methodName: string) {
+    const axis = normalizeAxisIndex(toNumber(quad.left));
+    const argument = toNumber(resolveOperand(quad.right, memory));
+    const methodCode = ENCODER_METHOD_NAMES.indexOf(methodName);
+    if (methodCode === -1) {
+        return;
+    }
+    executeEncoderMethod(axis, methodCode, argument);
+}
+
+function handleSetGearBlend(quad: Quad, memory: Map<number, number | string | boolean>) {
+    const axis = normalizeAxisIndex(toNumber(quad.left));
+    const counts = toNumber(resolveOperand(quad.right, memory));
+    const mode = toNumber(quad.res) !== 0 ? 1 : 0;
+    const methodCode = ENCODER_METHOD_NAMES.indexOf('setGearBlend');
+    executeEncoderMethod(axis, methodCode, counts, mode);
+}
+
+function handleSetInputType(quad: Quad, memory: Map<number, number | string | boolean>, inputState: InputRuntimeState) {
+    const channel = normalizeInputChannel(resolveOperand(quad.left, memory));
+    const polarity = toNumber(resolveOperand(quad.right, memory));
+    const activeLow = polarity === 0;
+    inputState.activeLow.set(channel, activeLow);
+
+    const api = (globalThis as any).digitalInputs;
+    if (api && typeof api.configure === 'function') {
+        try {
+            api.configure(channel, activeLow);
+        } catch {
+            // Ignore host configuration errors in CLI mode
+        }
+    }
+}
+
+function handleReadInput(quad: Quad, memory: Map<number, number | string | boolean>, inputState: InputRuntimeState) {
+    const channel = normalizeInputChannel(resolveOperand(quad.left, memory));
+    const rawLevel = readInputLevel(channel);
+    const activeLow = inputState.activeLow.get(channel) ?? false;
+    const logical = activeLow ? !rawLevel : rawLevel;
+    memory.set(resolveTargetAddress(quad.res, memory), logical ? 1 : 0);
+}
+
+function readInputLevel(channel: number): boolean {
+    const api = (globalThis as any).digitalInputs;
+    if (api && typeof api.read === 'function') {
+        const result = api.read(channel);
+        const normalized = normalizeDigitalValue(result);
+        if (normalized !== null) {
+            return normalized;
+        }
+    }
+
+    const states = api?.states;
+    if (states && typeof states === 'object') {
+        const candidate = states[channel];
+        const normalized = normalizeDigitalValue(candidate);
+        if (normalized !== null) {
+            return normalized;
+        }
+    }
+
+    return false;
+}
+
+function normalizeDigitalValue(value: unknown): boolean | null {
+    if (typeof value === 'boolean') {
+        return value;
+    }
+    if (typeof value === 'number') {
+        return value !== 0;
+    }
+    return null;
+}
+
+function readEncoderAxisProperty(axis: number, propertyCode: number) {
+    const normalizedAxis = normalizeAxisIndex(axis);
+    const propertyIndex = normalizePropertyIndex(propertyCode);
+    const propertyName = ENCODER_PROPERTY_NAMES[propertyIndex];
+
+    const motionControlValue = readMotionControlProperty(normalizedAxis, propertyName);
+    if (motionControlValue !== undefined) {
+        return motionControlValue;
+    }
+
+    const customReader = (globalThis as any).readEncoderValue;
+    if (typeof customReader === 'function') {
+        const customValue = customReader(normalizedAxis, propertyName);
+        if (typeof customValue === 'number') {
+            return customValue;
+        }
+    }
+
+    const encoderSource = (globalThis as any).encoder;
+    if (encoderSource) {
+        const axisName = ENCODER_AXIS_NAMES[normalizedAxis];
+        const axisBucket = encoderSource[axisName];
+        if (axisBucket && typeof axisBucket === 'object') {
+            const candidate = axisBucket[propertyName];
+            if (typeof candidate === 'function') {
+                const fnValue = candidate.call(axisBucket);
+                if (typeof fnValue === 'number') {
+                    return fnValue;
+                }
+            } else if (typeof candidate === 'number') {
+                return candidate;
+            }
+        }
+
+        const fallback = encoderSource[propertyName];
+        if (typeof fallback === 'function') {
+            const fnValue = fallback.call(encoderSource);
+            if (typeof fnValue === 'number') {
+                return fnValue;
+            }
+        } else if (typeof fallback === 'number') {
+            return fallback;
+        }
+    }
+
+    return 0;
+}
+
+function readMotionControlProperty(axis: number, propertyName: string) {
+    const motionControl = (globalThis as any).motionControl;
+    if (!motionControl) {
+        return undefined;
+    }
+
+    const methodName = propertyName === 'counts' ? 'getEncoderCounts' : 'getEncoderAngle';
+    const handler = motionControl[methodName];
+    if (typeof handler === 'function') {
+        const value = handler.call(motionControl, axis);
+        if (typeof value === 'number') {
+            return value;
+        }
+    }
+    return undefined;
+}
+
+function normalizeAxisIndex(value: number) {
+    if (!Number.isFinite(value)) {
+        return 0;
+    }
+
+    const truncated = Math.trunc(value);
+    if (truncated < 0) {
+        return 0;
+    }
+    if (truncated >= ENCODER_AXIS_NAMES.length) {
+        return ENCODER_AXIS_NAMES.length - 1;
+    }
+    return truncated;
+}
+
+function normalizePropertyIndex(value: number) {
+    if (!Number.isFinite(value)) {
+        return 0;
+    }
+
+    const truncated = Math.trunc(value);
+    if (truncated < 0) {
+        return 0;
+    }
+    if (truncated >= ENCODER_PROPERTY_NAMES.length) {
+        return ENCODER_PROPERTY_NAMES.length - 1;
+    }
+    return truncated;
+}
+
+function normalizeMethodCode(value: number) {
+    if (!Number.isFinite(value)) {
+        return 0;
+    }
+
+    const truncated = Math.trunc(value);
+    if (truncated < 0) {
+        return 0;
+    }
+    if (truncated >= ENCODER_METHOD_NAMES.length) {
+        return ENCODER_METHOD_NAMES.length - 1;
+    }
+    return truncated;
+}
+
+function normalizeInputChannel(value: number | string | boolean | undefined) {
+    const numeric = Math.trunc(toNumber(value as number));
+    if (numeric < 0) {
+        return 0;
+    }
+    if (numeric >= MAX_INPUT_CHANNELS) {
+        return MAX_INPUT_CHANNELS - 1;
+    }
+    return numeric;
+}
+
+function executeEncoderMethod(axis: number, methodCode: number, argument: number, extraParam: number = 0) {
+    const methodName = ENCODER_METHOD_NAMES[methodCode] ?? ENCODER_METHOD_NAMES[0];
+    const customHandler = (globalThis as any).handleEncoderMethod;
+    if (typeof customHandler === 'function') {
+        customHandler(axis, methodCode, argument, methodName, extraParam);
+        return;
+    }
+
+    const encoderSource = (globalThis as any).encoder;
+    if (!encoderSource) {
+        return;
+    }
+
+    const motionControl = (globalThis as any).motionControl;
+    const methodFn = motionControl ? motionControl[methodName] : undefined;
+    if (typeof methodFn === 'function') {
+        if (methodName === 'setGearBlend') {
+            methodFn.call(motionControl, axis, argument, extraParam !== 0);
+        } else {
+            methodFn.call(motionControl, axis, argument);
+        }
+        return;
+    }
+
+    const axisName = ENCODER_AXIS_NAMES[axis];
+    const axisBucket = encoderSource[axisName];
+
+    const targetBucket = axisBucket && typeof axisBucket === 'object' ? axisBucket : encoderSource;
+    const candidate = axisBucket && typeof axisBucket === 'object'
+        ? axisBucket[methodName]
+        : encoderSource[methodName];
+
+    if (typeof candidate === 'function') {
+        if (methodName === 'setGearBlend') {
+            candidate.call(targetBucket, argument, extraParam !== 0);
+        } else {
+            candidate.call(targetBucket, argument);
+        }
+    }
+}
+
+function resolveOperand(value: number | string | undefined, memory: Map<number, number | string | boolean>) {
+    if (typeof value === 'number') {
+        return value;
+    }
+
+    if (!value) {
+        return 0;
+    }
+
+    if (value.startsWith('*')) {
+        return dereferenceValue(Number(value.slice(1)), memory);
+    }
+
+    if (value.startsWith('ADDR:')) {
+        return Number(value.slice(5));
+    }
+
+    if (value.startsWith('STR:')) {
+        return decodeStringLiteral(value.slice(4));
+    }
+
+    const asNumber = Number(value);
+    if (!Number.isNaN(asNumber)) {
+        if (memory.has(asNumber)) {
+            const stored = memory.get(asNumber);
+            return typeof stored === 'number' || typeof stored === 'string' || typeof stored === 'boolean'
+                ? stored
+                : asNumber;
+        }
+        return asNumber;
+    }
+
+    return value;
+}
+
+function toNumber(value: number | string | boolean | undefined) {
+    if (typeof value === 'number') {
+        return value;
+    }
+    if (typeof value === 'string' && value.trim() !== '') {
+        const parsed = Number(value);
+        return Number.isNaN(parsed) ? 0 : parsed;
+    }
+    if (typeof value === 'boolean') {
+        return value ? 1 : 0;
+    }
+    return 0;
+}
+
+function resolveTargetAddress(value: number | string, memory: Map<number, number | string | boolean>) {
+    if (typeof value === 'string' && value.startsWith('&')) {
+        const slot = Number(value.slice(1));
+        const addr = memory.get(slot);
+        if (typeof addr === 'number') {
+            return addr;
+        }
+        return Number(addr ?? 0);
+    }
+    return toAddress(value);
+}
+
+function toAddress(value: number | string) {
+    if (typeof value === 'number') {
+        return value;
+    }
+    const parsed = Number(value);
+    return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function dereferenceValue(slot: number, memory: Map<number, number | string | boolean>) {
+    const pointer = Number(memory.get(slot) ?? 0);
+    return Number(memory.get(pointer) ?? 0);
+}
+
+function decodeStringLiteral(hex: string) {
+    return Buffer.from(hex, 'hex').toString('utf8');
+}
+
+function isTruthy(value: number | string | boolean | undefined) {
+    return toNumber(value) !== 0;
+}
+
+function formatStats(stats: RunStats) {
+    const lines: string[] = [];
+    lines.push('=== Performance Stats ===');
+    if (stats.sourceFileSizeBytes !== undefined) {
+        lines.push(`Source file size: ${stats.sourceFileSizeBytes} bytes`);
+    }
+    lines.push(`Program size: ${stats.programSizeBytes} bytes (${stats.instructions} quads)`);
+    lines.push(`Instructions executed: ${stats.instructions}`);
+    lines.push(`Execution time: ${stats.durationMicroseconds.toFixed(3)} µs`);
+    if (stats.printDurationMicroseconds && stats.printDurationMicroseconds > 0) {
+        lines.push(`Printing time: ${stats.printDurationMicroseconds.toFixed(3)} µs`);
+    }
+
+    const mips = stats.durationMicroseconds > 0
+        ? stats.instructions / stats.durationMicroseconds
+        : stats.instructions > 0
+            ? Infinity
+            : 0;
+    const perQuadUs = stats.instructions > 0
+        ? stats.durationMicroseconds / stats.instructions
+        : 0;
+    lines.push(`Speed: ${Number.isFinite(mips) ? mips.toFixed(2) : 'inf'} MIPS`);
+    lines.push(`Avg per quad: ${perQuadUs.toFixed(3)} µs/quad`);
+
+    if (stats.runtimeMemorySnapshot) {
+        const snapshot = stats.runtimeMemorySnapshot;
+        const deltaBytes = snapshot.heapPeakBytes - snapshot.heapStartBytes;
+        const deltaSign = deltaBytes >= 0 ? '' : '-';
+        lines.push('Runtime memory:');
+        lines.push(`  Heap start: ${formatBytes(snapshot.heapStartBytes)}`);
+        lines.push(`  Heap peak: ${formatBytes(snapshot.heapPeakBytes)} (Δ ${deltaSign}${formatBytes(Math.abs(deltaBytes))})`);
+        lines.push(`  Heap end: ${formatBytes(snapshot.heapEndBytes)}`);
+    }
+    lines.push('');
+    lines.push('Operation breakdown:');
+
+    const breakdown = [...stats.operationCounts.entries()].sort((a, b) => b[1] - a[1]);
+    for (const [op, count] of breakdown) {
+        const percentage = stats.instructions > 0 ? (count / stats.instructions) * 100 : 0;
+        lines.push(`  ${op}: ${count} (${percentage.toFixed(1)}%)`);
+    }
+    lines.push('========================');
+    return lines;
+}
+
+function formatBytes(value: number) {
+    if (!Number.isFinite(value)) {
+        return '0 bytes';
+    }
+    const units = ['bytes', 'KB', 'MB', 'GB', 'TB'];
+    let absValue = Math.abs(value);
+    let unitIndex = 0;
+    while (absValue >= 1024 && unitIndex < units.length - 1) {
+        absValue /= 1024;
+        unitIndex++;
+    }
+    const precision = unitIndex === 0 ? 0 : 2;
+    const sign = value < 0 ? '-' : '';
+    return `${sign}${absValue.toFixed(precision)} ${units[unitIndex]}`;
+}
+
+function writeQuadFile(quads: Quad[], sourcePath: string): string {
+    const targetPath = `${sourcePath.replace(/\.ty$/i, '')}.quads.txt`;
+    dumpQuadsToFile(quads, targetPath);
+    return targetPath;
+}
+
+function dumpQuadsForCRuntime(quads: Quad[]): string {
+    const filePath = path.join(os.tmpdir(), `typeton-quads-${Date.now()}.txt`);
+    dumpQuadsToFile(quads, filePath);
+    return filePath;
+}
+
+function dumpQuadsToFile(quads: Quad[], filePath: string) {
+    const lines = ['# Quad list for embedded runtime'];
+
+    const normalize = (value: number | string | undefined) => {
+        if (typeof value === 'number') {
+            return value.toString();
+        }
+        if (!value || value === '') {
+            return '0';
+        }
+        return value.toString();
+    };
+
+    quads.forEach(q => {
+        lines.push(`${q.op} ${normalize(q.left)} ${normalize(q.right)} ${normalize(q.res)}`);
+    });
+    fs.writeFileSync(filePath, lines.join('\n'));
+}
+
+function ensureCRuntime(scriptDir: string): string {
+    const runtimeDir = path.join(scriptDir, 'embedded_runtime');
+    const runner = path.join(runtimeDir, 'run_program');
+    const sources = [
+        path.join(runtimeDir, 'run_program.c'),
+        path.join(runtimeDir, 'typeton_runtime.c')
+    ];
+
+    let needsBuild = !fs.existsSync(runner);
+    if (!needsBuild) {
+        const runnerStat = fs.statSync(runner);
+        for (const src of sources) {
+            const srcStat = fs.statSync(src);
+            if (srcStat.mtimeMs > runnerStat.mtimeMs) {
+                needsBuild = true;
+                break;
+            }
+        }
+    }
+
+    if (needsBuild) {
+        execSync(`cd ${runtimeDir} && cc -std=c99 -O2 -o run_program run_program.c typeton_runtime.c -lm`, { stdio: 'inherit' });
+    }
+
+    return runner;
+}

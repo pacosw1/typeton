@@ -1,8 +1,6 @@
-func test() -> {
-
-}
-
-//hello my man
 func main() -> {
     print("hello world")
+    var b: Int
+    b = 5
+    print(b)
 }

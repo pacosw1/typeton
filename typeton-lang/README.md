@@ -1,3 +1,0 @@
-Syntax highlighting for typeton language.
-
-Helps you visualize and color code reserved words, symbols etc...

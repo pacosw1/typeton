@@ -1,0 +1,79 @@
+{
+    "name": "typeton",
+    "displayName": "Typeton Language Support",
+    "description": "Syntax highlighting and language support for Typeton",
+    "version": "0.1.0",
+    "publisher": "typeton",
+    "engines": {
+        "vscode": "^1.80.0"
+    },
+    "activationEvents": [
+        "onLanguage:typeton",
+        "onCommand:typeton.run",
+        "onCommand:typeton.compile"
+    ],
+    "main": "./extension.js",
+    "dependencies": {
+        "vscode-languageclient": "^9.0.0",
+        "vscode-languageserver": "^9.0.0",
+        "vscode-languageserver-textdocument": "^1.0.1",
+        "antlr4ts": "^0.5.0-alpha.4",
+        "antlr4-c3": "^3.0.0"
+    },
+    "devDependencies": {
+        "antlr4ts-cli": "^0.5.0-alpha.4",
+        "typescript": "^5.0.0",
+        "@types/node": "^20.11.0"
+    },
+    "categories": [
+        "Programming Languages"
+    ],
+    "contributes": {
+        "commands": [
+            {
+                "command": "typeton.run",
+                "title": "Typeton: Run Program",
+                "category": "Typeton"
+            },
+            {
+                "command": "typeton.compile",
+                "title": "Typeton: Compile Program",
+                "category": "Typeton"
+            }
+        ],
+        "languages": [
+            {
+                "id": "typeton",
+                "aliases": [
+                    "Typeton",
+                    "typeton"
+                ],
+                "extensions": [
+                    ".ty"
+                ],
+                "configuration": "./language-configuration.json"
+            }
+        ],
+        "grammars": [
+            {
+                "language": "typeton",
+                "scopeName": "source.typeton",
+                "path": "./syntaxes/typeton.tmLanguage.json"
+            }
+        ],
+        "menus": {
+            "editor/title": [
+                {
+                    "command": "typeton.run",
+                    "when": "editorLangId == typeton",
+                    "group": "navigation"
+                },
+                {
+                    "command": "typeton.compile",
+                    "when": "editorLangId == typeton",
+                    "group": "navigation"
+                }
+            ]
+        }
+    }
+}

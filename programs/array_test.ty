@@ -1,0 +1,12 @@
+// Array test program
+var arr: Int32[5];
+var nums: Int32[3] = [10, 20, 30];
+
+arr[0] = 100;
+arr[1] = 200;
+
+var x: Int32 = nums[0];
+var y: Int32 = arr[1];
+
+print(x);
+print(y);

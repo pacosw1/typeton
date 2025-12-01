@@ -1,0 +1,12 @@
+
+
+
+const advanced_math = (a: Float, b: Float): Float => {
+    return a + 1.5;
+};
+
+
+const main = (): void => {
+    const res: Float = advanced_math(3.5, 2.5);
+    print(res);
+};

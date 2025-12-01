@@ -1,0 +1,12 @@
+func main() {
+    var x: Int = 10;
+    var y: Float = 20.5;
+    
+    // Test native motion library
+    moveAbsPos(1, 100.0);
+    waitForEncoderCount(500);
+    
+    if (x < 20) {
+        print("X is small");
+    }
+}

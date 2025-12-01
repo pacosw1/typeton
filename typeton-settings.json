@@ -1,0 +1,6 @@
+{
+    "files.associations": {
+        "*.ty": "typescript"
+    },
+    "editor.semanticHighlighting.enabled": true
+}

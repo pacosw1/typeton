@@ -1,0 +1,22 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Launch Typeton Extension",
+      "type": "extensionHost",
+      "request": "launch",
+      "runtimeExecutable": "${execPath}",
+      "args": ["--extensionDevelopmentPath=${workspaceFolder}/vscode-typeton"],
+      // "preLaunchTask": "npm: install",
+      "outFiles": []
+    },
+    {
+      "name": "C/C++ Runner: Debug Session",
+      "type": "lldb",
+      "request": "launch",
+      "args": [],
+      "cwd": "/Users/franciscosainzwilliams/Documents/GitHub/typeton/embedded_runtime",
+      "program": "/Users/franciscosainzwilliams/Documents/GitHub/typeton/embedded_runtime/build/Debug/outDebug"
+    }
+  ]
+}

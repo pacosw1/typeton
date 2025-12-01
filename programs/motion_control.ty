@@ -1,0 +1,43 @@
+// Motion Control Example
+// This program demonstrates motion control commands
+
+func main() {
+    var axis: Int32 = 0
+    var position: Float32 = 100.5
+    var velocity: Float32 = 50.0
+    var acceleration: Float32 = 10.0
+    
+    // Enable motor
+    enable_motor(axis)
+    
+    // Set motion parameters
+    set_velocity(axis, velocity)
+    set_accel(axis, acceleration)
+    
+    // Move to absolute position
+    move_abs(axis, position)
+    
+    // Wait for move to complete
+    wait_move(axis)
+    
+    // Get current position
+    var current_pos: Float32 = get_position(axis)
+    
+    // Move relative
+    move_rel(axis, 10.0)
+    wait_move(axis)
+    
+    // Home axis
+    home(axis)
+    wait_move(axis)
+    
+    // Disable motor
+    disable_motor(axis)
+}
+
+
+
+
+
+
+

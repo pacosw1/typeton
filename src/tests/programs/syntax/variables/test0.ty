@@ -1,6 +1,0 @@
-func main() -> Void {
-    var a: Int
-    var b: Float
-    var c: Bool
-    var d: String
-}

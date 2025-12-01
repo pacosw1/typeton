@@ -1,0 +1,22 @@
+// Smoke test for encoder properties and method calls
+// Ensures motion commands and input APIs emit dedicated quads.
+
+var axisXAngle: Float = X.Encoder.Angle;
+var axisYCounts: Float = Y.Encoder.Counts;
+
+print(axisXAngle);
+print(axisYCounts);
+
+// Methods with literal and variable arguments
+X.waitForAngle(90);
+Y.waitForCounts(axisYCounts);
+Z.jog(2000);
+X.moveAbsolute(1000);
+X.setGearMaster(Y);
+Y.setGearRatio(2.5);
+X.setGearBlend(2000, MASTER);
+Y.setGearBlend(4000, SLAVE);
+Input.setType(0, LOW);
+
+var axisTriggered: Bool = ReadInput(0);
+print(axisTriggered);

@@ -1,0 +1,8 @@
+const add = (x: Int32, y: Int32): Int32 => {
+    return x + y;
+};
+
+var a: Int32 = 10;
+var b: Int32 = 20;
+var c: Int32 = add(a, b);
+print(c);
